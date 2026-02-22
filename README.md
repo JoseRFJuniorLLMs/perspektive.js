@@ -1,76 +1,76 @@
 # Perspektive.js
 
-**Um telescopio hiperbolico para mentes artificiais.**
+**A hyperbolic telescope for artificial minds.**
 
-Motor unificado de visualizacao WebGL para [NietzscheDB](https://github.com/JoseRFJuniorLLMs/NietzscheDB) — o unico banco de vetores hiperbolico do mundo. Renderiza grafos de conhecimento em geometria nao-euclidiana real, com geodesicas matematicamente exatas, a 60 FPS na GPU.
+Unified WebGL visualization engine for [NietzscheDB](https://github.com/JoseRFJuniorLLMs/NietzscheDB) — the world's only hyperbolic vector database. Renders knowledge graphs in real non-Euclidean geometry, with mathematically exact geodesics, at 60 FPS on the GPU.
 
-> *"Perspektive"* e a grafia alema de "perspectiva". Friedrich Nietzsche — o filosofo que da nome ao banco de dados — cunhou o conceito de **Perspektivismus**: a ideia de que toda verdade depende do ponto de vista do observador. Esta biblioteca materializa isso literalmente: o mesmo grafo de conhecimento pode ser visto atraves de 4 "lentes" geometricas diferentes (Poincare, Riemann, Minkowski, Emocao), cada uma revelando uma verdade oculta sobre os dados.
-
----
-
-## Por que existe?
-
-O NietzscheDB armazena memorias de IA em um **Poincare ball** hiperbolico — nao em espaco Euclidiano plano. Nenhuma biblioteca de grafos existente (D3, Cytoscape, Cosmograph, Sigma.js) sabe desenhar:
-
-- **Geodesicas hiperbolicas** (arcos de circulo ortogonais a borda, nao linhas retas)
-- **Zoom de Mobius** (translacao hiperbolica, nao pan linear)
-- **Cones de luz Minkowski** (causalidade espaco-temporal)
-- **Sintese dialetica na esfera de Riemann** (opostos nos polos, sintese no equador)
-
-O dashboard anterior usava Cosmograph e cobria **~21% das funcionalidades** do banco. Perspektive.js foi construida para cobrir os outros 79%.
+> *"Perspektive"* is the German spelling of "perspective". Friedrich Nietzsche — the philosopher who gives the database its name — coined the concept of **Perspektivismus**: the idea that every truth depends on the observer's point of view. This library materializes that literally: the same knowledge graph can be viewed through 4 different geometric "lenses" (Poincaré, Riemann, Minkowski, Emotion), each revealing a hidden truth about the data.
 
 ---
 
-## O que faz?
+## Why does it exist?
 
-### O Manifold Switcher — 4 Lentes sobre os mesmos dados
+NietzscheDB stores AI memories in a **Poincaré ball** — not in flat Euclidean space. No existing graph library (D3, Cytoscape, Cosmograph, Sigma.js) can draw:
 
-| Lente | Geometria | O que revela |
+- **Hyperbolic geodesics** (circular arcs orthogonal to the boundary, not straight lines)
+- **Möbius zoom** (hyperbolic translation, not linear pan)
+- **Minkowski light cones** (spacetime causality)
+- **Dialectical synthesis on the Riemann sphere** (opposites at the poles, synthesis at the equator)
+
+The previous dashboard used Cosmograph and covered **~21% of features**. Perspektive.js was built to cover the other 79%.
+
+---
+
+## What does it do?
+
+### The Manifold Switcher — 4 Lenses on the same data
+
+| Lens | Geometry | What it reveals |
 |---|---|---|
-| **Poincare** (padrao) | Disco hiperbolico 2D | Hierarquia: conceitos abstratos no centro, memorias especificas nas bordas |
-| **Riemann** | Esfera 3D giratoria | Opostos dialeticos nos polos, sintese no equador (motor Hegeliano) |
-| **Minkowski** | Espaco-tempo 3D | Causalidade: cones de luz, edges Timelike/Spacelike/Lightlike |
-| **Emocao** | Cartesiano 2D | Russell Circumplex: Valence x Arousal = o "humor" da memoria da IA |
+| **Poincaré** (default) | 2D hyperbolic disk | Hierarchy: abstract concepts at center, specific memories at the edges |
+| **Riemann** | 3D rotatable sphere | Dialectical opposites at poles, synthesis at equator (Hegelian engine) |
+| **Minkowski** | 3D spacetime | Causality: light cones, Timelike/Spacelike/Lightlike edges |
+| **Emotion** | 2D Cartesian | Russell Circumplex: Valence × Arousal = the AI's memory "mood" |
 
-### Overlays (sobre qualquer lente)
+### Overlays (on top of any lens)
 
-- **Heatmap de Difusao** — resultado do `DIFFUSE FROM $seed` como camera termica
-- **Pulsacao de Energia** — nos "respiram" baseado na propriedade `energy`
+- **Diffusion Heatmap** — `DIFFUSE FROM $seed` result as a thermal camera
+- **Energy Pulse** — nodes "breathe" based on the `energy` property
 
 ---
 
-## Arquitetura
+## Architecture
 
 ```
 NietzscheDB REST API (/api/graph)
-         |
-         v
-   LivePoincareMap          TanStack Query (polling 5s)
-   projectTo2D()            256d → 2D preservando raio hiperbolico
-         |
-         v
-   PoincareView             React Three Fiber (Three.js declarativo)
-   HyperbolicNodes           InstancedMesh (1 draw call = 100k+ nos)
-   HyperbolicEdges           Geodesicas via Regra de Cramer → EllipseCurve
-         |
-         v
-   GPU (WebGL)              Bloom HDR + AdditiveBlending = Neon Cyberpunk
+         │
+         ▼
+   PerspektiveEngine        SSE streaming + REST fallback
+   projectToManifold()      256d → 2D/3D preserving hyperbolic depth
+         │
+         ▼
+   GraphNodes                React Three Fiber (declarative Three.js)
+   InstancedMesh             1 draw call = 100k+ nodes
+   GraphEdges                Geodesics via Cramer's Rule → EllipseCurve
+         │
+         ▼
+   GPU (WebGL)               Bloom HDR + AdditiveBlending = Neon Cyberpunk
 ```
 
-### Stack tecnologico
+### Tech Stack
 
-| Camada | Tecnologia |
+| Layer | Technology |
 |---|---|
-| Renderizacao | Three.js via `@react-three/fiber` (R3F) |
-| Post-processing | `@react-three/postprocessing` (Bloom HDR) |
-| Data fetching | `@tanstack/react-query` (polling com cache) |
-| Estado global | `zustand` (Manifold Switcher) |
-| Shaders | GLSL customizado (Vertex + Fragment) |
+| Rendering | Three.js via `@react-three/fiber` (R3F) |
+| Post-processing | `@react-three/postprocessing` (HDR Bloom) |
+| Data fetching | `@tanstack/react-query` + SSE (EventSource) |
+| State management | `zustand` (Manifold Switcher) |
+| Shaders | Custom GLSL (Vertex + Fragment) |
 | Build | Vite (lib mode, tree-shakeable) |
 
 ---
 
-## Estrutura do projeto
+## Project Structure
 
 ```
 perspektive.js/
@@ -79,126 +79,151 @@ perspektive.js/
 ├── vite.config.ts               lib mode, externals React/Three
 │
 ├── docs/
-│   └── biblioteca.md            Spec arquitetural completa (7 bibliotecas → 1 engine)
+│   └── biblioteca.md            Full architectural spec (7 libraries → 1 engine)
 │
 └── src/
-    ├── index.ts                 Exports publicos
+    ├── index.ts                 Public exports
     │
     ├── core/
-    │   ├── Engine.tsx           Canvas WebGL principal (orquestra manifolds)
-    │   └── ManifoldContext.tsx   Estado: qual lente esta ativa + transicoes
+    │   ├── Engine.tsx           Main WebGL canvas (orchestrates manifolds)
+    │   └── ManifoldContext.tsx   State: which lens is active + transitions
     │
-    ├── math/                    Cerebro matematico (zero dependencias de UI)
-    │   ├── poincare.ts          Geodesicas, distancia acosh, conformal factor
-    │   ├── klein.ts             Conversao Poincare↔Klein, colinearidade O(1)
-    │   └── riemann.ts           Projecao estereografica, midpoint esferico
+    ├── math/                    Mathematical brain (zero UI dependencies)
+    │   ├── poincare.ts          Geodesics, acosh distance, conformal factor, WebGL vertices
+    │   ├── klein.ts             Poincaré↔Klein conversion, O(1) collinearity
+    │   └── riemann.ts           Stereographic projection, spherical midpoint
     │
-    ├── manifolds/               Renderizadores por geometria
-    │   ├── PoincareView.tsx     Disco hiperbolico (Bloom + InstancedMesh)
-    │   ├── MinkowskiView.tsx    Cones de luz espaco-temporais
-    │   └── EmotionView.tsx      Russell Circumplex (Valence x Arousal)
+    ├── manifolds/               Geometry-specific renderers
+    │   ├── PoincareView.tsx     Hyperbolic disk (Bloom + InstancedMesh)
+    │   ├── MinkowskiView.tsx    Spacetime light cones
+    │   └── EmotionView.tsx      Russell Circumplex (Valence × Arousal)
     │
-    └── components/              Conectores de dados reais
-        └── LivePoincareMap.tsx   REST fetch + projectTo2D + HUD overlay
+    └── components/              Live data connectors
+        ├── LivePoincareMap.tsx   REST fetch + projectTo2D + HUD overlay
+        └── PerspektiveEngine.tsx Full dashboard: 4 manifolds, hover, lerp, SSE
 ```
 
 ---
 
-## Matematica implementada
+## Implemented Mathematics
 
-### Geodesicas no disco de Poincare
+### Geodesics on the Poincaré Disk
 
-No espaco hiperbolico, a menor distancia entre dois pontos **nao e uma reta**. E um arco de circulo que cruza a fronteira do disco em angulo de 90 graus (ortogonalmente).
+In hyperbolic space, the shortest path between two points **is not a straight line**. It is a circular arc that crosses the disk boundary at exactly 90 degrees (orthogonally).
 
 ```
 calculateGeodesic(p1, p2) → ArcGeodesic | LineGeodesic
 ```
 
-Usa a **Regra de Cramer** para encontrar o centro `(cx, cy)` do circulo ortogonal:
+Uses **Cramer's Rule** to find the center `(cx, cy)` of the orthogonal circle:
 
 ```
-cx = ((1 + ||p1||²) · p2.y - (1 + ||p2||²) · p1.y) / (2 · (p1.x · p2.y - p2.x · p1.y))
-raio = sqrt(cx² + cy² - 1)
+cx = ((1 + ‖p1‖²) · p2.y - (1 + ‖p2‖²) · p1.y) / (2 · (p1.x · p2.y - p2.x · p1.y))
+radius = √(cx² + cy² - 1)
 ```
 
-Excecao: se os pontos sao colineares com a origem, a geodesica e uma reta euclidiana.
+Exception: if points are collinear with the origin, the geodesic is a Euclidean straight line.
 
-### Distancia hiperbolica
-
-```
-d(u,v) = acosh(1 + 2·||u-v||² / ((1-||u||²)(1-||v||²)))
-```
-
-Corresponde exatamente a `HYPERBOLIC_DIST()` do NQL (linguagem de query do NietzscheDB).
-
-### Fator conformal (correcao visual)
-
-Nos perto da borda do disco parecem menores no monitor, mas no espaco hiperbolico mantem seu tamanho. A funcao `getVisualRadius()` compensa usando:
+### Hyperbolic Distance
 
 ```
-conformalFactor = 2 / (1 - ||x||²)
+d(u,v) = acosh(1 + 2·‖u-v‖² / ((1-‖u‖²)(1-‖v‖²)))
+```
+
+Corresponds exactly to `HYPERBOLIC_DIST()` in NQL (NietzscheDB's query language).
+
+### Conformal Factor (Visual Correction)
+
+Nodes near the disk boundary appear smaller on screen, but in hyperbolic space they maintain their size. The `getVisualRadius()` function compensates using:
+
+```
+conformalFactor = 2 / (1 - ‖x‖²)
 visualRadius = baseEnergy / conformalFactor
 ```
 
-### Projecao 256d → 2D (O hack do raio)
+### 256d → 2D Projection (The Radius Hack)
 
-Vetores de alta dimensionalidade sao projetados para o disco 2D preservando a hierarquia:
-- **Direcao**: primeiras 2 dimensoes do embedding (angulo no disco)
-- **Raio**: norma do vetor completo (profundidade hiperbolica)
+High-dimensional vectors are projected to the 2D disk while preserving hierarchy:
+- **Direction**: first 2 embedding dimensions (angle on the disk)
+- **Radius**: full vector norm (hyperbolic depth)
 
-Isso garante que conceitos abstratos (centro) e memorias especificas (borda) mantêm suas posicoes hierarquicas mesmo apos o achatamento dimensional.
+This ensures that abstract concepts (center) and specific memories (boundary) maintain their hierarchical positions even after dimensional flattening.
+
+### Stereographic Projection (Riemann Mode)
+
+Maps the 2D plane onto the S² sphere using inverse stereographic projection:
+
+```
+x_sphere = 2·px / (1 + px² + py²)
+y_sphere = 2·py / (1 + px² + py²)
+z_sphere = (px² + py² - 1) / (1 + px² + py²)
+```
+
+Diametrically opposed concepts land at antipodal poles. Dialectical synthesis sits at the equator.
+
+### Minkowski Spacetime (Causal Mode)
+
+Maps the graph onto a 3D spacetime tower where Y = Time:
+- **X, Z axes** = spatial dimensions (from embedding)
+- **Y axis** = temporal dimension (derived from node energy)
+- **Light cones** = translucent cones on elite nodes (energy > 0.8)
+  - Cyan cone = future (pointing up)
+  - Magenta cone = past (pointing down)
 
 ---
 
-## Estetica visual
+## Visual Aesthetics
 
 ### Cyberpunk Neon HDR
 
-A visualizacao usa **cores HDR** (High Dynamic Range) — valores acima de 1.0 que "sangram" luz para pixels vizinhos via Bloom:
+The visualization uses **HDR colors** (High Dynamic Range) — values above 1.0 that "bleed" light into neighboring pixels via Bloom:
 
-| NodeType | Cor | Multiplicador HDR |
+| NodeType | Color | HDR Multiplier |
 |---|---|---|
-| Semantic | `#00ff66` Esmeralda Matrix | 2x |
-| Episodic | `#00f0ff` Ciano Eletrico | 2x |
-| Concept | `#f59e0b` Amber | 2x |
-| DreamSnapshot | `#8b5cf6` Violeta | 2x |
-| Pruned | `#1e293b` Cinza Apagado | 1x (sem brilho) |
-| **Ubermensch** (energy > 0.8) | `#ff00ff` Magenta Puro | **4x** (halo explosivo) |
+| Semantic | `#00ff66` Matrix Emerald | 2× |
+| Episodic | `#00f0ff` Electric Cyan | 2× |
+| Concept | `#f59e0b` Amber | 2× |
+| DreamSnapshot | `#8b5cf6` Violet | 2× |
+| Pruned | `#1e293b` Dark Gray | 1× (no glow) |
+| **Übermensch** (energy > 0.8) | `#ff00ff` Pure Magenta | **4×** (explosive halo) |
 
-### AdditiveBlending nas edges
+### AdditiveBlending on Edges
 
-Quando geodesicas se cruzam, o WebGL **soma** as cores (`THREE.AdditiveBlending`). Zonas de alta densidade no grafo brilham como um cerebro biologico sem nenhum pos-processamento extra.
+When geodesics overlap, WebGL **sums** the colors (`THREE.AdditiveBlending`). High-density zones in the graph glow like a biological brain with zero additional post-processing.
 
-### Respiracao biologica
+### Organic Breathing
 
-O universo de nos pulsa sutilmente no eixo Z a 2Hz (`Math.sin(t * 2) * 0.005`), dando a sensacao de organismo vivo.
+Nodes interpolate smoothly to their target positions via Lerp (5% per frame), giving the sensation of a living organism. When the AI's energy changes, nodes don't teleport — they flow.
 
 ---
 
-## Status de desenvolvimento
+## Development Status
 
-| Componente | Status | Descricao |
+| Component | Status | Description |
 |---|---|---|
-| Matematica hiperbolica (`poincare.ts`) | ✅ Pronto | Geodesicas, distancia, conformal scaling, WebGL vertices |
-| Matematica Klein (`klein.ts`) | ✅ Pronto | Conversoes Poincare↔Klein, colinearidade O(1) |
-| Matematica Riemann (`riemann.ts`) | ✅ Pronto | Projecao estereografica, midpoint esferico |
-| Motor WebGL (`PoincareView.tsx`) | ✅ Pronto | InstancedMesh + Bloom HDR + AdditiveBlending |
-| Integracao React (`LivePoincareMap.tsx`) | ✅ Pronto | TanStack Query + projectTo2D + HUD cyberpunk |
-| Backend REST (`nietzsche-server`) | 🟡 Pendente | Verificar se `GET /api/graph` retorna array `embedding` |
-| Interatividade (Mouse/Hover) | ❌ Falta | Raycaster para tooltip com ID, Energy, Type, Content |
-| Animacoes suaves (Lerp) | ❌ Falta | Transicao organica de cor/tamanho entre refreshes |
-| Manifold Switcher (3 lentes) | ❌ Falta | Riemann, Minkowski, Emocao + morphing entre geometrias |
-| Streaming real-time | ❌ Futuro | WebSocket/SSE com delta (nasceu/morreu) para 1M+ nos |
+| Hyperbolic math (`poincare.ts`) | ✅ Done | Geodesics, distance, conformal scaling, WebGL vertices |
+| Klein math (`klein.ts`) | ✅ Done | Poincaré↔Klein conversion, O(1) collinearity |
+| Riemann math (`riemann.ts`) | ✅ Done | Stereographic projection, spherical midpoint |
+| WebGL engine (`PoincareView.tsx`) | ✅ Done | InstancedMesh + Bloom HDR + AdditiveBlending |
+| React integration (`LivePoincareMap.tsx`) | ✅ Done | TanStack Query + projectTo2D + cyberpunk HUD |
+| Manifold Switcher (`PerspektiveEngine.tsx`) | ✅ Done | 4 lenses with smooth Lerp 3D transitions |
+| Raycaster hover + tooltip | ✅ Done | Cyberpunk tooltip with ID, Energy, Type, Valence |
+| Riemann sphere (3D) | ✅ Done | Stereographic projection + wireframe + OrbitControls |
+| Minkowski light cones (3D) | ✅ Done | Cyan/magenta cones on elite nodes + spacetime grid |
+| SSE streaming | ✅ Done | EventSource with REST fallback |
+| Smooth Lerp animation | ✅ Done | 3D position interpolation at 60fps |
+| Backend REST (`nietzsche-server`) | 🟡 Pending | Verify `GET /api/graph` returns `embedding` array |
+| Real-time delta streaming | ❌ Future | WebSocket/SSE sending only born/died deltas for 1M+ nodes |
 
 ---
 
-## Instalacao
+## Installation
 
 ```bash
 npm install @nietzsche/perspektive
 ```
 
-Ou clone e rode localmente:
+Or clone and run locally:
 
 ```bash
 git clone https://github.com/JoseRFJuniorLLMs/perspektive.js.git
@@ -207,7 +232,21 @@ npm install
 npm run typecheck
 ```
 
-## Uso
+## Usage
+
+### Full Dashboard (recommended)
+
+```tsx
+import { PerspektiveEngine } from '@nietzsche/perspektive';
+
+function App() {
+  return <PerspektiveEngine collection="eva_core" apiBase="http://localhost:8080" />;
+}
+```
+
+Includes: Manifold Switcher, SSE streaming, hover tooltips, Lerp animation, HUD overlay.
+
+### Poincaré-only with TanStack Query
 
 ```tsx
 import { LivePoincareMap } from '@nietzsche/perspektive';
@@ -217,7 +256,7 @@ function App() {
 }
 ```
 
-Ou use o motor diretamente com dados proprios:
+### Raw WebGL engine with your own data
 
 ```tsx
 import { PoincareView } from '@nietzsche/perspektive';
@@ -233,52 +272,61 @@ function App() {
 }
 ```
 
-Use as funcoes matematicas standalone:
+### Standalone math functions
 
 ```typescript
-import { poincare } from '@nietzsche/perspektive';
+import { poincare, klein, riemann } from '@nietzsche/perspektive';
 
+// Hyperbolic distance (matches NQL's HYPERBOLIC_DIST)
 const dist = poincare.poincareDistance({ x: 0.1, y: 0.2 }, { x: 0.5, y: 0.7 });
+
+// Geodesic arc parameters for rendering
 const geo = poincare.calculateGeodesic({ x: 0.3, y: -0.2 }, { x: -0.4, y: 0.6 });
+
+// Poincaré → Klein conversion (geodesics become straight lines)
+const kp = klein.poincareToKlein({ x: 0.5, y: 0.3 });
+
+// Stereographic projection to S² sphere
+const sphere = riemann.stereographicProject({ x: 0.4, y: -0.2 });
 ```
 
 ---
 
-## Contexto: NietzscheDB
+## Context: NietzscheDB
 
-[NietzscheDB](https://github.com/JoseRFJuniorLLMs/NietzscheDB) e um banco de dados de grafos hiperbolicos escrito em Rust, projetado para ser a memoria de longo prazo de IAs autonomas. Suas features incluem:
+[NietzscheDB](https://github.com/JoseRFJuniorLLMs/NietzscheDB) is a hyperbolic graph database written in Rust, designed to be the long-term memory of autonomous AIs. Its features include:
 
-- **Poincare ball embeddings** — hierarquia natural (profundidade = raio)
-- **4 geometrias** — Poincare, Klein, Riemann, Minkowski
-- **L-System** — crescimento fractal autonomo de nos
-- **Sleep cycle** — reconsolidacao de memoria (perturbacao + Hausdorff check)
-- **Zaratustra** — evolucao autonoma (Will-to-Power, Eternal Recurrence, Ubermensch)
-- **Daemons** — agentes autonomos patrulhando o grafo
-- **Heat kernel diffusion** — propagacao de ativacao multi-escala
-- **Dream queries** — exploracao especulativa com rollback
-- **Schrodinger edges** — arestas probabilisticas com colapso contextual
-- **NQL** — linguagem de query com 19+ tipos e funcoes geometricas built-in
+- **Poincaré ball embeddings** — natural hierarchy (depth = radius)
+- **4 geometries** — Poincaré, Klein, Riemann, Minkowski
+- **L-System** — autonomous fractal node growth
+- **Sleep cycle** — memory reconsolidation (perturbation + Hausdorff check)
+- **Zaratustra** — autonomous evolution (Will-to-Power, Eternal Recurrence, Übermensch)
+- **Daemons** — autonomous agents patrolling the graph
+- **Heat kernel diffusion** — multi-scale activation propagation
+- **Dream queries** — speculative exploration with rollback
+- **Schrödinger edges** — probabilistic edges with contextual collapse
+- **NQL** — query language with 19+ types and built-in geometric functions
 
-Perspektive.js existe para tornar tudo isso **visivel**.
-
----
-
-## Por que "Perspektive"?
-
-Tres razoes:
-
-1. **Nietzsche era alemao.** O banco se chama NietzscheDB. A biblioteca de visualizacao honra isso com grafia alema.
-
-2. **Perspektivismus.** Nietzsche argumentou que nao existe "verdade objetiva" — toda verdade e uma perspectiva. Esta biblioteca materializa isso: o mesmo grafo visto pelo disco de Poincare revela hierarquia; visto pela esfera de Riemann revela opostos dialeticos; visto por Minkowski revela causalidade; visto pelo Circumplex revela emocao. Quatro verdades. Nenhuma completa sozinha.
-
-3. **Perspektive e um projeto de otica.** Literalmente: transforma coordenadas de um espaco (hiperbolico 256d) para outro (tela 2D do monitor) preservando significado. E uma lente.
+Perspektive.js exists to make all of this **visible**.
 
 ---
 
-## Licenca
+## Why "Perspektive"?
+
+Three reasons:
+
+1. **Nietzsche was German.** The database is called NietzscheDB. The visualization library honors this with the German spelling.
+
+2. **Perspektivismus.** Nietzsche argued there is no "objective truth" — every truth is a perspective. This library materializes that: the same graph viewed through the Poincaré disk reveals hierarchy; through the Riemann sphere reveals dialectical opposites; through Minkowski reveals causality; through the Circumplex reveals emotion. Four truths. None complete on its own.
+
+3. **Perspektive is an optics project.** Literally: it transforms coordinates from one space (256-dimensional hyperbolic) to another (2D monitor screen) while preserving meaning. It is a lens.
+
+---
+
+## License
 
 MIT
 
 ---
 
-*Construido para o NietzscheDB por [Jose Ricardo Figueroa Junior](https://github.com/JoseRFJuniorLLMs) e Claude.*
+*Built for NietzscheDB by [Jose Ricardo Figueroa Junior](https://github.com/JoseRFJuniorLLMs) and Claude.*
