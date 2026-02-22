@@ -1,0 +1,62 @@
+{
+  "name": "@nietzsche/perspektive",
+  "version": "0.1.0",
+  "description": "Unified WebGL visualization engine for NietzscheDB — hyperbolic, causal, and emotional graph rendering with switchable manifold lenses",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
+    "@react-three/postprocessing": "^3.0.4",
+    "@tanstack/react-query": "^5.90.21",
+    "three": "^0.172.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/three": "^0.172.0",
+    "eslint": "^9.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  },
+  "keywords": [
+    "hyperbolic",
+    "poincare",
+    "graph-visualization",
+    "webgl",
+    "three.js",
+    "nietzschedb",
+    "manifold",
+    "minkowski",
+    "riemann"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nicaea-ai/perspektive.js"
+  }
+}
