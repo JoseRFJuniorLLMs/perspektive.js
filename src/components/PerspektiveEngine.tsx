@@ -1,14 +1,14 @@
 /**
- * PerspektiveEngine.tsx — O Dashboard completo
+ * PerspektiveEngine.tsx — O Dashboard completo (3D Edition)
  *
- * Manifold Switcher (4 lentes), Raycaster Hover com Tooltip,
- * Animacao Lerp organica, SSE streaming com fallback REST.
- * Tudo em 1 componente. Cyberpunk edition.
+ * Manifold Switcher (4 lentes com projecao 3D real),
+ * Raycaster Hover com Tooltip, Animacao Lerp 3D organica,
+ * SSE streaming com fallback REST, Cones de Luz Minkowski.
  */
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Canvas, useFrame, ThreeEvent } from '@react-three/fiber';
-import { OrthographicCamera, MapControls, Line, Html } from '@react-three/drei';
+import { OrthographicCamera, OrbitControls, Line, Html } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { calculateGeodesic, getVisualRadius, type Point2D } from '../math/poincare';
@@ -17,6 +17,8 @@ import { calculateGeodesic, getVisualRadius, type Point2D } from '../math/poinca
 // TIPAGENS
 // ==========================================
 
+interface Point3D { x: number; y: number; z: number }
+
 export interface NodeData extends Point2D {
   id: string;
   energy: number;
@@ -24,6 +26,7 @@ export interface NodeData extends Point2D {
   embedding: number[];
   arousal?: number;
   valence?: number;
+  z: number; // Coordenada Z para modos 3D
 }
 
 export interface EdgeData {
@@ -41,28 +44,51 @@ export interface PerspektiveEngineProps {
 }
 
 // ==========================================
-// MATEMATICA: PROJECAO POR MANIFOLD
+// A FISICA DO MULTIVERSO (As 4 Lentes)
 // ==========================================
 
-function projectToManifold(n: { embedding: number[]; valence?: number; arousal?: number }, manifold: ManifoldType): Point2D {
-  // Poincare: hack do raio (norma completa como raio, 2 primeiras dims como direcao)
+function projectToManifold(n: { embedding: number[]; valence?: number; arousal?: number; energy: number }, manifold: ManifoldType): Point3D {
+  if (!n.embedding || n.embedding.length < 2) return { x: 0, y: 0, z: 0.01 };
+
+  // POINCARE: Hierarquia 2D (hack do raio)
   if (manifold === 'POINCARE') {
-    if (!n.embedding || n.embedding.length < 2) return { x: 0, y: 0 };
     let sumSq = 0;
     for (let i = 0; i < n.embedding.length; i++) sumSq += n.embedding[i] * n.embedding[i];
     const r = Math.min(Math.sqrt(sumSq), 0.99);
     const len = Math.sqrt(n.embedding[0] ** 2 + n.embedding[1] ** 2) || 1;
-    return { x: (n.embedding[0] / len) * r, y: (n.embedding[1] / len) * r };
+    return { x: (n.embedding[0] / len) * r, y: (n.embedding[1] / len) * r, z: 0.01 };
   }
 
-  // Emocao: Russell Circumplex (Valence no X, Arousal no Y)
+  // EMOTION: Russell Circumplex (Valencia x Excitacao 2D)
   if (manifold === 'EMOTION') {
-    return { x: n.valence || 0, y: (n.arousal || 0) * 2 - 1 };
+    return { x: n.valence || 0, y: (n.arousal || 0) * 2 - 1, z: 0.01 };
   }
 
-  // Riemann/Minkowski: fallback 2D (shaders 3D avancados virao depois)
-  if (!n.embedding || n.embedding.length < 2) return { x: 0, y: 0 };
-  return { x: n.embedding[0], y: n.embedding[1] };
+  // RIEMANN: Esfera 3D (Projecao Estereografica Inversa)
+  // Pega o disco 2D e "enrola" numa esfera. Opostos nos polos!
+  if (manifold === 'RIEMANN') {
+    const px = n.embedding[0] * 3; // Escala para esfera gorda
+    const py = n.embedding[1] * 3;
+    const denom = 1 + px * px + py * py;
+    return {
+      x: (2 * px) / denom,
+      y: (2 * py) / denom,
+      z: (px * px + py * py - 1) / denom,
+    };
+  }
+
+  // MINKOWSKI: Espaco-Tempo Causal 3D
+  // X e Z = espaco, Y = TEMPO (torre temporal)
+  if (manifold === 'MINKOWSKI') {
+    const timeY = (n.energy * 5) - 2.5; // Alta energia no topo do tempo
+    return {
+      x: n.embedding[0] * 2,
+      y: timeY,
+      z: n.embedding[1] * 2,
+    };
+  }
+
+  return { x: 0, y: 0, z: 0.01 };
 }
 
 // ==========================================
@@ -83,7 +109,8 @@ function geodesicPoints(p1: Point2D, p2: Point2D, segments = 40): [number, numbe
   return curve.getPoints(segments).map(v => [v.x, v.y, 0]);
 }
 
-const HyperbolicEdges = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeData[] }) => {
+/** Edges: geodesicas no Poincare, linhas retas nos outros modos */
+const GraphEdges = ({ nodes, edges, manifold }: { nodes: NodeData[], edges: EdgeData[], manifold: ManifoldType }) => {
   const nodeMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
 
   const lines = useMemo(() => {
@@ -92,9 +119,13 @@ const HyperbolicEdges = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeData[
       const p2 = nodeMap.get(edge.target);
       if (!p1 || !p2) return null;
 
-      const points = geodesicPoints(p1, p2, 40);
       const opacity = 0.1 + (edge.weight * 0.4);
       const hdrColor = new THREE.Color(0x00d8ff).multiplyScalar(1.5);
+
+      // Geodesicas hiperbolicas so no Poincare, linhas retas nos outros
+      const points: [number, number, number][] = manifold === 'POINCARE'
+        ? geodesicPoints(p1, p2, 40)
+        : [[p1.x, p1.y, p1.z], [p2.x, p2.y, p2.z]];
 
       return (
         <Line
@@ -108,16 +139,56 @@ const HyperbolicEdges = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeData[
         />
       );
     }).filter(Boolean);
-  }, [edges, nodeMap]);
+  }, [edges, nodeMap, manifold]);
 
   return <group>{lines}</group>;
 };
 
 // ==========================================
-// NOS COM LERP + HOVER (InstancedMesh)
+// CONES DE LUZ DE MINKOWSKI
 // ==========================================
 
-const HyperbolicUniverse = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeData[] }) => {
+const MinkowskiLightCones = ({ nodes, manifold }: { nodes: NodeData[], manifold: ManifoldType }) => {
+  if (manifold !== 'MINKOWSKI') return null;
+
+  // Cones translucidos nos nos elite (energy > 0.8)
+  const eliteNodes = nodes.filter(n => n.energy > 0.8);
+
+  return (
+    <group>
+      {eliteNodes.map(node => (
+        <group key={`cone-${node.id}`} position={[node.x, node.y, node.z]}>
+          {/* Cone do Futuro (ciano, apontando pra cima) */}
+          <mesh position={[0, 1, 0]}>
+            <coneGeometry args={[1, 2, 32, 1, true]} />
+            <meshBasicMaterial
+              color="#00f0ff" transparent opacity={0.08}
+              side={THREE.DoubleSide} depthWrite={false}
+              blending={THREE.AdditiveBlending}
+            />
+          </mesh>
+          {/* Cone do Passado (magenta, apontando pra baixo) */}
+          <mesh position={[0, -1, 0]} rotation={[Math.PI, 0, 0]}>
+            <coneGeometry args={[1, 2, 32, 1, true]} />
+            <meshBasicMaterial
+              color="#ff00ff" transparent opacity={0.08}
+              side={THREE.DoubleSide} depthWrite={false}
+              blending={THREE.AdditiveBlending}
+            />
+          </mesh>
+        </group>
+      ))}
+      {/* Grid de espaco-tempo */}
+      <gridHelper args={[10, 20, 0x334155, 0x1e293b]} position={[0, -2.5, 0]} />
+    </group>
+  );
+};
+
+// ==========================================
+// NOS COM LERP 3D + HOVER (InstancedMesh)
+// ==========================================
+
+const GraphNodes = ({ nodes, manifold }: { nodes: NodeData[], manifold: ManifoldType }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const [hoveredNode, setHoveredNode] = useState<NodeData | null>(null);
 
@@ -126,15 +197,19 @@ const HyperbolicUniverse = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeDa
   const targetPos = useMemo(() => new THREE.Vector3(), []);
   const currentPos = useMemo(() => new THREE.Vector3(), []);
 
-  // Setup inicial: posiciona todos os nos
+  // Setup inicial
   useEffect(() => {
     if (!meshRef.current) return;
 
     nodes.forEach((node, i) => {
-      dummy.position.set(node.x, node.y, 0.01);
+      dummy.position.set(node.x, node.y, node.z);
       const baseRadius = 0.01 + (node.energy * 0.03);
-      const renderRadius = getVisualRadius(node, baseRadius);
+      const renderRadius = manifold === 'POINCARE' ? getVisualRadius(node, baseRadius) : baseRadius;
       dummy.scale.set(renderRadius, renderRadius, 1);
+
+      // No Riemann, nos olham pro centro da esfera
+      if (manifold === 'RIEMANN') dummy.lookAt(0, 0, 0);
+
       dummy.updateMatrix();
       meshRef.current!.setMatrixAt(i, dummy.matrix);
 
@@ -143,9 +218,8 @@ const HyperbolicUniverse = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeDa
       else if (node.node_type === 'Episodic') color.setHex(0x00f0ff);
       else if (node.node_type === 'Concept') color.setHex(0xf59e0b);
       else if (node.node_type === 'DreamSnapshot') color.setHex(0x8b5cf6);
-      else color.setHex(0x00ff66); // Semantic = Esmeralda Matrix
+      else color.setHex(0x00ff66);
 
-      // Ubermensch: energy > 0.8 → magenta 4x (Bloom halo)
       if (node.energy > 0.8) {
         color.setHex(0xff00ff);
         color.multiplyScalar(4.0);
@@ -158,9 +232,9 @@ const HyperbolicUniverse = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeDa
 
     meshRef.current.instanceMatrix.needsUpdate = true;
     if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
-  }, [nodes, dummy, color]);
+  }, [nodes, dummy, color, manifold]);
 
-  // ANIMACAO LERP — 60fps, movimento organico
+  // LERP 3D — 60fps, movimento organico em X/Y/Z
   useFrame(() => {
     if (!meshRef.current) return;
     let needsUpdate = false;
@@ -168,15 +242,17 @@ const HyperbolicUniverse = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeDa
     nodes.forEach((node, i) => {
       meshRef.current!.getMatrixAt(i, dummy.matrix);
       currentPos.setFromMatrixPosition(dummy.matrix);
-      targetPos.set(node.x, node.y, 0.01);
+      targetPos.set(node.x, node.y, node.z);
 
-      // Se estiver longe, move 5% por frame (respiracao organica)
       if (currentPos.distanceTo(targetPos) > 0.001) {
         currentPos.lerp(targetPos, 0.05);
         const baseRadius = 0.01 + (node.energy * 0.03);
-        const radius = getVisualRadius(node, baseRadius);
+        const radius = manifold === 'POINCARE' ? getVisualRadius(node, baseRadius) : baseRadius;
         dummy.position.copy(currentPos);
         dummy.scale.set(radius, radius, 1);
+
+        if (manifold === 'RIEMANN') dummy.lookAt(0, 0, 0);
+
         dummy.updateMatrix();
         meshRef.current!.setMatrixAt(i, dummy.matrix);
         needsUpdate = true;
@@ -201,8 +277,6 @@ const HyperbolicUniverse = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeDa
 
   return (
     <group>
-      <HyperbolicEdges nodes={nodes} edges={edges} />
-
       <instancedMesh
         ref={meshRef}
         args={[undefined, undefined, nodes.length]}
@@ -213,9 +287,9 @@ const HyperbolicUniverse = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeDa
         <meshBasicMaterial toneMapped={false} />
       </instancedMesh>
 
-      {/* TOOLTIP CYBERPUNK (HTML injetado no WebGL) */}
+      {/* TOOLTIP CYBERPUNK */}
       {hoveredNode && (
-        <Html position={[hoveredNode.x, hoveredNode.y + 0.05, 0]} center style={{ pointerEvents: 'none' }}>
+        <Html position={[hoveredNode.x, hoveredNode.y + 0.05, hoveredNode.z]} center style={{ pointerEvents: 'none' }}>
           <div style={{
             background: 'rgba(2, 6, 23, 0.9)',
             border: '1px solid #00f0ff',
@@ -249,7 +323,7 @@ const HyperbolicUniverse = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeDa
 };
 
 // ==========================================
-// BORDA DO DISCO
+// BORDA DO DISCO (so Poincare)
 // ==========================================
 
 const DiskBorder = () => {
@@ -265,6 +339,20 @@ const DiskBorder = () => {
 };
 
 // ==========================================
+// WIREFRAME DA ESFERA DE RIEMANN (so Riemann)
+// ==========================================
+
+const RiemannWireframe = ({ manifold }: { manifold: ManifoldType }) => {
+  if (manifold !== 'RIEMANN') return null;
+  return (
+    <mesh>
+      <sphereGeometry args={[1, 32, 32]} />
+      <meshBasicMaterial color="#1e293b" wireframe transparent opacity={0.15} />
+    </mesh>
+  );
+};
+
+// ==========================================
 // O PALCO PRINCIPAL
 // ==========================================
 
@@ -276,6 +364,8 @@ export const PerspektiveEngine = ({
   const [manifold, setManifold] = useState<ManifoldType>('POINCARE');
   const [graphData, setGraphData] = useState<{ nodes: NodeData[]; edges: EdgeData[] }>({ nodes: [], edges: [] });
   const [streaming, setStreaming] = useState(false);
+
+  const is2D = manifold === 'POINCARE' || manifold === 'EMOTION';
 
   // Mapeia dados da API para o manifold ativo
   const mapApiData = useCallback((data: { nodes: NodeData[]; edges: EdgeData[] }) => {
@@ -293,13 +383,11 @@ export const PerspektiveEngine = ({
 
   // SSE STREAMING com fallback REST
   useEffect(() => {
-    // Fallback: fetch REST normal
     fetch(`${apiBase}/api/graph?collection=${collection}&limit=${limit}`)
       .then(res => res.json())
       .then(data => mapApiData(data))
-      .catch(() => {}); // Silencioso se falhar
+      .catch(() => {});
 
-    // Tenta SSE streaming (se o backend suportar)
     const sseUrl = `${apiBase}/api/graph/stream?collection=${collection}`;
     const eventSource = new EventSource(sseUrl);
 
@@ -338,12 +426,18 @@ export const PerspektiveEngine = ({
   return (
     <div style={{ position: 'relative', width: '100%', height: '100vh', background: '#000' }}>
 
-      {/* WEBGL CANVAS */}
       <Canvas>
-        <OrthographicCamera makeDefault position={[0, 0, 5]} zoom={300} />
-        <MapControls enableRotate={manifold === 'RIEMANN'} />
+        {/* Camera: Ortografica pro 2D, Perspectiva implícita pro 3D */}
+        {is2D && <OrthographicCamera makeDefault position={[0, 0, 5]} zoom={300} />}
 
-        {/* Disco de Poincare (fundo + borda) — so no modo Poincare */}
+        {/* OrbitControls: rotacao travada nos modos 2D, livre nos 3D */}
+        <OrbitControls
+          enableRotate={!is2D}
+          enablePan={true}
+          enableZoom={true}
+        />
+
+        {/* POINCARE: disco + borda */}
         {manifold === 'POINCARE' && (
           <>
             <mesh position={[0, 0, -0.1]}>
@@ -354,7 +448,7 @@ export const PerspektiveEngine = ({
           </>
         )}
 
-        {/* Eixos do Circumplex — so no modo Emocao */}
+        {/* EMOTION: eixos do Circumplex */}
         {manifold === 'EMOTION' && (
           <group>
             <Line points={[[-1, 0, 0], [1, 0, 0]]} color="#334155" transparent opacity={0.3} lineWidth={1} />
@@ -362,7 +456,15 @@ export const PerspektiveEngine = ({
           </group>
         )}
 
-        <HyperbolicUniverse nodes={graphData.nodes} edges={graphData.edges} />
+        {/* RIEMANN: wireframe da esfera */}
+        <RiemannWireframe manifold={manifold} />
+
+        {/* MINKOWSKI: cones de luz + grid */}
+        <MinkowskiLightCones nodes={graphData.nodes} manifold={manifold} />
+
+        {/* Edges + Nos */}
+        <GraphEdges nodes={graphData.nodes} edges={graphData.edges} manifold={manifold} />
+        <GraphNodes nodes={graphData.nodes} manifold={manifold} />
 
         {/* BLOOM CYBERPUNK */}
         <EffectComposer enableNormalPass={false}>
@@ -370,7 +472,7 @@ export const PerspektiveEngine = ({
         </EffectComposer>
       </Canvas>
 
-      {/* MANIFOLD SWITCHER — barra de botoes */}
+      {/* MANIFOLD SWITCHER */}
       <div style={{
         position: 'absolute', bottom: 30, left: '50%', transform: 'translateX(-50%)',
         display: 'flex', gap: 15, background: 'rgba(0,0,0,0.8)', padding: '10px 20px',
