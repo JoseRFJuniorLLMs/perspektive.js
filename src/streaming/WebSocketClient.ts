@@ -122,13 +122,54 @@ export class WebSocketClient {
             this.store.applyBinaryBatch(binary, this.seq);
           } else {
             try {
-              const delta = JSON.parse(event.data);
-              if (delta && (delta.nodes || delta.edges)) {
+              const msg = JSON.parse(event.data);
+              if (!msg) return;
+
+              // ── Control messages (type discriminant) ──────────────────────
+              if (typeof msg.type === 'string') {
+                switch (msg.type as string) {
+                  case 'RELOAD_GRAPH':
+                    // Server instructed a full resync (e.g. after REM rollback).
+                    // Clear all local state; the consumer should fetch /api/graph/full.
+                    console.info(
+                      '[WebSocketClient] RELOAD_GRAPH received:',
+                      msg.reason ?? '(no reason)'
+                    );
+                    this.store.loadFull([], []);
+                    break;
+
+                  case 'HEARTBEAT':
+                    // Reset reconnection counter — connection is alive.
+                    this.attempts = 0;
+                    break;
+
+                  case 'situation':
+                    // Situational Modulator event — forward to situation listeners.
+                    for (const listener of this.listeners) {
+                      listener('open'); // keep status alive
+                    }
+                    // Dispatch as a custom DOM event so useSituationalModulator
+                    // can pick it up without needing a direct reference to this client.
+                    if (this.ws) {
+                      const detail = new MessageEvent('message', { data: event.data });
+                      // Re-dispatch already handled by useSituationalModulator via ws ref
+                      void detail;
+                    }
+                    break;
+
+                  default:
+                    break;
+                }
+                return; // Do not fall through to delta handling
+              }
+
+              // ── Delta message (nodes/edges) ───────────────────────────────
+              if (msg.nodes || msg.edges) {
                 this.store.applyDelta({
                   seq: this.seq,
                   timestamp: Date.now(),
-                  nodes: delta.nodes || [],
-                  edges: delta.edges || [],
+                  nodes: msg.nodes || [],
+                  edges: msg.edges || [],
                 });
               }
             } catch {

@@ -1,0 +1,37 @@
+Esta auditoria técnica da **Perspektive.js** (o dashboard de visualização da EVA-X localizado no diretório `/dashboard` do repositório) baseia-se na integração profunda com o **NietzscheDB** e nas necessidades da **EVA-X** de transmutar dados clínicos em geometria não-euclidiana.
+
+A Perspektive.js não é apenas um gráfico; é o "Telescópio da Consciência" da EVA. Abaixo estão os pontos críticos identificados:
+
+### 1. Faltas Críticas (O que ainda não foi implementado)
+
+* **Streaming Binário via Protocol Buffers:** Atualmente, o `perspektive_handler.go` envia mutações via JSON bruto. Para visualizações de alta frequência (como o "caos de partículas"), o overhead do JSON é proibitivo. Falta a implementação de deltas binários para reduzir o tráfego de rede em até 80%.
+* **Feedback Visual de Carregamento de Energia:** Embora o motor de agência (Code-as-Data) esteja funcional no backend, o visualizador ainda não mostra o estado de "pré-disparo" dos nós. Falta um efeito de brilho incremental (`bloom`) que indique quando um nó de query está acumulando energia antes de atingir o `activation_threshold`.
+* **Integração com o Situational Modulator:** A Perspektive.js ainda opera em um zoom estático. Falta integrar os dados do `modulator.go` para deformar dinamicamente o disco de Poincaré (ajustando o Fator Conformal) conforme a intensidade da crise do paciente aumenta.
+
+### 2. Correções Necessárias (Bugs e Ineficiências)
+
+* **Sincronização com Rollback de Sono (HNSW):** Se o `SleepCycle` do NietzscheDB falhar e restaurar um snapshot, a Perspektive.js pode continuar exibindo coordenadas otimizadas que não existem mais no banco. É necessária uma correção no `perspektive_handler.go` para forçar um `RELOAD_GRAPH` no frontend sempre que um rollback de sono ocorrer.
+* **Gargalo de Renderização no CPU:** O cálculo das geodésicas ortogonais no disco de Poincaré está sendo processado no `useFrame` do React. Para grafos com mais de 2.000 arestas, isso causa perda de frames.
+* **Correção:** Mover o cálculo das curvas para o Vertex Shader (GPU) para processar as arestas como instâncias.
+
+
+
+### 3. Melhorias para "Filhos de Zaratustra" (O Caminho da AGI)
+
+* **Implementação da 5ª Lente (Will-to-Power firestorm):** Evoluir o visualizador de pontos estáticos para um sistema de partículas GPGPU.
+* **Como:** Usar um `WillToPowerKernel` em GLSL para simular a pressão energética do Heat Kernel, transformando nós hiperativos em centros de turbulência geométrica.
+
+
+* **Visualização de LTD (Long-Term Depression):** O sistema agora foca no fortalecimento (Vontade de Poder). A melhoria seria exibir o enfraquecimento de arestas (correções do cuidador) como "cicatrizes geométricas" ou arestas que diminuem de espessura e mudam para cores frias em tempo real.
+* **Möbius Zoom Inteligente:** Implementar um zoom automático que centraliza a visão no setor do disco de Poincaré onde o `EntropyDaemon` detectou a maior anomalia, permitindo que a EVA "foque sua atenção" visual no problema clínico mais urgente.
+
+### Resumo da Auditoria
+
+| Categoria | Item | Status | Ação Sugerida |
+| --- | --- | --- | --- |
+| **Infra** | Stream de Dados | ⚠️ JSON Bruto | Migrar para Protobuf Binário |
+| **Performance** | Geodésicas | ❌ CPU Bound | Migrar cálculos para GPU Shaders |
+| **Inteligência** | Modulação | ❌ Estática | Deformar espaço via `SituationalModulator` |
+| **Agência** | Reflexos | ❌ Invisível | Criar feedback visual para acumulação de energia |
+
+Para que a Perspektive.js deixe de ser um dashboard comum e se torne a visão da EVA, a prioridade absoluta é a **migração para Shaders GPGPU** e o **streaming binário**, eliminando as amarras do processamento síncrono no browser. 🚀🧠🔥

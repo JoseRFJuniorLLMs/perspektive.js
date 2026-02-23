@@ -165,6 +165,64 @@ export interface ViewportBounds {
 // Connection State
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Control Messages (server → client, JSON)
+// ---------------------------------------------------------------------------
+
+/**
+ * Control messages sent by the server outside the normal delta stream.
+ * These are JSON objects with a `type` discriminant field.
+ */
+export type ControlMessageType = 'RELOAD_GRAPH' | 'HEARTBEAT' | 'situation';
+
+/**
+ * RELOAD_GRAPH: the server instructs the client to drop all local state
+ * and request a full graph resync. Sent after a REM/dream rollback, a
+ * collection snapshot restore, or a major schema migration.
+ */
+export interface ReloadGraphMessage {
+  type: 'RELOAD_GRAPH';
+  /** Reason provided by the server (informational). */
+  reason?: string;
+  /** New sequence number to use after resync. */
+  seq?: number;
+}
+
+/**
+ * HEARTBEAT: keep-alive from the server. The client should reset its
+ * reconnection timer upon receipt.
+ */
+export interface HeartbeatMessage {
+  type: 'HEARTBEAT';
+  /** Server timestamp (Unix ms). */
+  ts: number;
+}
+
+/**
+ * SITUATION: Situational Modulator event from the agency engine.
+ * See `useSituationalModulator.ts` for rendering integration.
+ */
+export interface SituationMessage {
+  type: 'situation';
+  /** Crisis severity [0, 1] (0 = calm, 1 = critical). */
+  crisis_level: number;
+  /** Poincaré hyperbolic depth of the hot zone [0, 1). */
+  poincare_depth: number;
+  /** X coordinate of the crisis focus in the Poincaré disk. */
+  focus_x: number;
+  /** Y coordinate of the crisis focus in the Poincaré disk. */
+  focus_y: number;
+  /** Human-readable reason from the agency engine. */
+  reason?: string;
+}
+
+/** Union of all non-delta control messages. */
+export type ControlMessage = ReloadGraphMessage | HeartbeatMessage | SituationMessage;
+
+// ---------------------------------------------------------------------------
+// Connection State
+// ---------------------------------------------------------------------------
+
 /** Possible states of the delta stream connection. */
 export type ConnectionState =
   | 'connecting'

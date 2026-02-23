@@ -8,12 +8,13 @@
  */
 
 import { useMemo, useRef, useEffect } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrthographicCamera, MapControls, Line } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { calculateGeodesic, getVisualRadius, type Point2D } from '../math/poincare';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import type { SituationalModulatorState } from '../interaction/useSituationalModulator';
 
 export interface NodeData extends Point2D {
   id: string;
@@ -142,8 +143,8 @@ const HyperbolicNodes = ({ nodes }: { nodes: NodeData[] }) => {
   );
 };
 
-// --- BORDA DO ABISMO ---
-const DiskBorder = () => {
+// --- BORDA DO ABISMO (with crisis pulse) ---
+const DiskBorder = ({ crisisLevel = 0 }: { crisisLevel?: number }) => {
   const points = useMemo(() => {
     const pts: [number, number, number][] = [];
     for (let i = 0; i <= 64; i++) {
@@ -153,11 +154,58 @@ const DiskBorder = () => {
     return pts;
   }, []);
 
-  return <Line points={points} color="#1e293b" transparent opacity={0.3} lineWidth={1} />;
+  // Crisis > 0.7 → the boundary pulses magenta (visual alarm)
+  const borderColor = crisisLevel > 0.7 ? '#ff00ff' : '#1e293b';
+  const opacity = crisisLevel > 0.7 ? 0.7 : 0.3;
+
+  return <Line points={points} color={borderColor} transparent opacity={opacity} lineWidth={1} />;
+};
+
+// --- CAMERA CONTROL (auto-zoom toward crisis focus) ---
+const CameraController = ({
+  autoZoomTarget,
+  crisisLevel,
+}: {
+  autoZoomTarget: [number, number] | null;
+  crisisLevel: number;
+}) => {
+  const { camera } = useThree();
+
+  useFrame(() => {
+    if (!autoZoomTarget || crisisLevel < 0.3) return;
+
+    const orth = camera as THREE.OrthographicCamera;
+    const targetX = autoZoomTarget[0] * 0.5; // 50% toward focus
+    const targetY = autoZoomTarget[1] * 0.5;
+    const targetZoom = 300 + crisisLevel * 200; // zoom in on crisis
+
+    // Smooth interpolation (0.03 per frame ≈ 1.5s at 60fps)
+    orth.position.x += (targetX - orth.position.x) * 0.03;
+    orth.position.y += (targetY - orth.position.y) * 0.03;
+    orth.zoom += (targetZoom - orth.zoom) * 0.03;
+    orth.updateProjectionMatrix();
+  });
+
+  return null;
 };
 
 // --- O PALCO PRINCIPAL ---
-export const PoincareView = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeData[] }) => {
+export const PoincareView = ({
+  nodes,
+  edges,
+  situationData,
+}: {
+  nodes: NodeData[];
+  edges: EdgeData[];
+  /** Optional Situational Modulator data to drive dynamic space deformation. */
+  situationData?: SituationalModulatorState;
+}) => {
+  const crisisLevel = situationData?.crisisLevel ?? 0;
+  const autoZoomTarget = situationData?.autoZoomTarget ?? null;
+
+  // Bloom intensity: 1.5 baseline, up to 4.0 at full crisis
+  const bloomIntensity = 1.5 + crisisLevel * 2.5;
+
   return (
     <div style={{ width: '100%', height: '100vh', background: '#000000' }}>
       <ErrorBoundary>
@@ -165,24 +213,27 @@ export const PoincareView = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeD
         <OrthographicCamera makeDefault position={[0, 0, 5]} zoom={300} />
         <MapControls enableRotate={false} />
 
+        {/* Situational Modulator: auto-zoom toward crisis focus */}
+        <CameraController autoZoomTarget={autoZoomTarget} crisisLevel={crisisLevel} />
+
         {/* O Abismo: azul noite abissal */}
         <mesh position={[0, 0, -0.1]}>
           <circleGeometry args={[1, 64]} />
           <meshBasicMaterial color="#050510" />
         </mesh>
 
-        <DiskBorder />
+        <DiskBorder crisisLevel={crisisLevel} />
 
         {/* Geodesicas primeiro, nos por cima */}
         <HyperbolicEdges nodes={nodes} edges={edges} />
         <HyperbolicNodes nodes={nodes} />
 
-        {/* POST-PROCESSING: GLOW CYBERPUNK */}
+        {/* POST-PROCESSING: GLOW CYBERPUNK (intensifies during crisis) */}
         <EffectComposer enableNormalPass={false}>
           <Bloom
             luminanceThreshold={0.2}
             mipmapBlur
-            intensity={1.5}
+            intensity={bloomIntensity}
             radius={0.8}
           />
         </EffectComposer>
