@@ -8,6 +8,8 @@
  * - Mapeamento de opostos dialeticos para polos antipodais
  */
 
+import { getWasmStereographic, isWasmReady } from './wasm-bridge';
+
 export interface Point3D {
   x: number;
   y: number;
@@ -16,6 +18,10 @@ export interface Point3D {
 
 /** Projecao estereografica: ponto 2D -> esfera S^2 (polo norte = infinito) */
 export function stereographicProject(p: { x: number; y: number }): Point3D {
+  if (isWasmReady()) {
+    return getWasmStereographic(p);
+  }
+
   const norm2 = p.x * p.x + p.y * p.y;
   const denom = norm2 + 1;
   return {

@@ -53,9 +53,6 @@ export class SpatialIndex {
   /** Lower bound of the indexed space (both X and Y). */
   private readonly minBound: number;
 
-  /** Upper bound of the indexed space (both X and Y). */
-  private readonly maxBound: number;
-
   /** Width/height of a single grid cell. */
   private readonly cellSize: number;
 
@@ -81,7 +78,6 @@ export class SpatialIndex {
   constructor(gridSize = 32, minBound = -1.5, maxBound = 1.5) {
     this.gridSize = gridSize;
     this.minBound = minBound;
-    this.maxBound = maxBound;
 
     const range = maxBound - minBound;
     this.cellSize = range / gridSize;

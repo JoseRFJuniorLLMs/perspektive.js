@@ -1,0 +1,14 @@
+D:\DEV\perspektive.js\wasm\target\wasm32-unknown-unknown\release\deps\serde-e8d6a57cc2760611.d: C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs D:\DEV\perspektive.js\wasm\target\wasm32-unknown-unknown\release\build\serde-6b9f6f9e4860161b\out/private.rs
+
+D:\DEV\perspektive.js\wasm\target\wasm32-unknown-unknown\release\deps\libserde-e8d6a57cc2760611.rlib: C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs D:\DEV\perspektive.js\wasm\target\wasm32-unknown-unknown\release\build\serde-6b9f6f9e4860161b\out/private.rs
+
+D:\DEV\perspektive.js\wasm\target\wasm32-unknown-unknown\release\deps\libserde-e8d6a57cc2760611.rmeta: C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs D:\DEV\perspektive.js\wasm\target\wasm32-unknown-unknown\release\build\serde-6b9f6f9e4860161b\out/private.rs
+
+C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs:
+C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs:
+C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs:
+C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs:
+C:\Users\web2a\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs:
+D:\DEV\perspektive.js\wasm\target\wasm32-unknown-unknown\release\build\serde-6b9f6f9e4860161b\out/private.rs:
+
+# env-dep:OUT_DIR=D:\\DEV\\perspektive.js\\wasm\\target\\wasm32-unknown-unknown\\release\\build\\serde-6b9f6f9e4860161b\\out

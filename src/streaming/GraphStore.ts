@@ -26,6 +26,7 @@ import type {
   ViewportBounds,
 } from './types';
 import { SpatialIndex } from './SpatialIndex';
+import { BinaryDecoder } from './BinaryDecoder';
 
 // ---------------------------------------------------------------------------
 // Snapshot Type
@@ -156,13 +157,56 @@ export class GraphStore {
     this.lastSeq = delta.seq;
 
     if (mutated) {
-      this.dirty = true;
-      this.cachedSnapshot = null;
-      this.version++;
-      this.notifyListeners();
+      this.handleMutation();
     }
 
     return true;
+  }
+
+  /**
+   * Apply a binary delta batch from NietzscheDB.
+   * High-performance path using FlatBuffers.
+   */
+  applyBinaryBatch(buffer: Uint8Array, seq: number): void {
+    if (seq <= this.lastSeq) return;
+
+    const delta = BinaryDecoder.decodeDelta(buffer);
+    let mutated = false;
+
+    // Binary results are already Upsert/Delete ready
+    for (const node of delta.nodes) {
+      this.nodes.set(node.id, node as NodePayload);
+      this.spatial.insert(node.id, this.getNodeX(node as NodePayload), this.getNodeY(node as NodePayload));
+      mutated = true;
+    }
+
+    for (const edge of delta.edges) {
+      const key = `${edge.source}:${edge.target}`;
+      this.edges.set(key, edge as EdgePayload);
+      this.nodeEdges.get(edge.source)?.add(key);
+      this.nodeEdges.get(edge.target)?.add(key);
+      mutated = true;
+    }
+
+    for (const id of delta.deletes) {
+      if (this.nodes.has(id)) {
+        this.nodes.delete(id);
+        this.spatial.remove(id);
+        mutated = true;
+      }
+    }
+
+    this.lastSeq = seq;
+    if (mutated) {
+      this.handleMutation();
+    }
+  }
+
+  private handleMutation() {
+    this.dirty = true;
+    this.cachedSnapshot = null;
+    this.version++;
+    this.notifyListeners();
   }
 
   /**
@@ -245,12 +289,8 @@ export class GraphStore {
     switch (ed.op) {
       case 'born': {
         if (!ed.data) return false;
-        const edge: EdgePayload = {
-          source: ed.source,
-          target: ed.target,
-          weight: ed.data.weight ?? 0.5,
-          ...ed.data,
-        };
+        const edge = { ...ed.data, source: ed.source, target: ed.target } as EdgePayload;
+        if (edge.weight === undefined) edge.weight = 0.5;
         this.edges.set(key, edge);
 
         // Register this edge with both endpoint nodes

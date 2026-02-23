@@ -1,0 +1,36 @@
+namespace Perspektive.Binary;
+
+struct Vec2 {
+  x: float;
+  y: float;
+}
+
+struct Vec3 {
+  x: float;
+  y: float;
+  z: float;
+}
+
+table NodeBinary {
+  id: string (required);
+  node_type: string;
+  energy: float;
+  pos: Vec3;
+  embedding: [float]; // Support for 256d vectors
+  arousal: float;
+  valence: float;
+}
+
+table EdgeBinary {
+  source: string (required);
+  target: string (required);
+  weight: float;
+}
+
+table GraphDelta {
+  upsert_nodes: [NodeBinary];
+  upsert_edges: [EdgeBinary];
+  delete_nodes: [string];
+}
+
+root_type GraphDelta;

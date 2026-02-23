@@ -1,21 +1,46 @@
 /**
- * PerspektiveEngine.tsx — O Dashboard completo (3D Edition)
+ * PerspektiveEngine.tsx — O Cockpit Completo (v0.3.0)
  *
- * Manifold Switcher (4 lentes com projecao 3D real),
- * Raycaster Hover com Tooltip, Animacao Lerp 3D organica,
- * SSE streaming com fallback REST, Cones de Luz Minkowski.
+ * Manifold Switcher (4 lentes), Raycaster Hover, Lerp 3D,
+ * SSE + WebSocket streaming, Drag, Box-Select, Context Menu,
+ * Selection Highlight, Export, Theme, Möbius Zoom,
+ * Diffusion Heatmap, Energy Pulse, Reasoning Trace, GPU Layout,
+ * Topological Analysis (β₀/β₁).
  */
 
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { Canvas, useFrame, ThreeEvent } from '@react-three/fiber';
+import {
+  useState, useMemo, useRef, useEffect, useCallback,
+  useSyncExternalStore, type RefObject,
+} from 'react';
+import { Canvas, useFrame, useThree, ThreeEvent } from '@react-three/fiber';
 import { OrthographicCamera, OrbitControls, Line, Html } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { calculateGeodesic, getVisualRadius, type Point2D } from '../math/poincare';
 import { ErrorBoundary } from './ErrorBoundary';
+import { NodePayload, EdgePayload } from '../streaming/types';
 import { SearchBar } from '../search/SearchBar';
 import { FilterPanel } from '../search/FilterPanel';
 import { useFilter } from '../search/useFilter';
+import { NodeLabels } from '../search/NodeLabels';
+import { WebGPULayoutRunner } from '../layouts/webgpu/compute-runner';
+import { GraphStore } from '../streaming/GraphStore';
+import { WebSocketClient } from '../streaming/WebSocketClient';
+import { computeBetti0, computeBetti1 } from '../analysis/tda';
+import { SemanticCameraAPI } from '../interaction/SemanticCamera';
+import { SelectionHighlight, HoverHighlight } from '../interaction/SelectionHighlight';
+import { BoxSelectOverlay } from '../interaction/BoxSelectOverlay';
+import { useSelection } from '../interaction/useSelection';
+import { ContextMenu } from '../interaction/ContextMenu';
+import { useDrag } from '../interaction/useDrag';
+import { useBoxSelect } from '../interaction/useBoxSelect';
+import { MobiusZoom } from '../interaction/MobiusZoom';
+import { PerspektiveThemeProvider, useTheme } from '../theme/ThemeContext';
+import { PRESETS as ThemePresets } from '../theme/presets';
+import { ExportToolbar } from './overlays/ExportToolbar';
+import { DiffusionHeatmap } from './overlays/DiffusionHeatmap';
+import { EnergyPulse } from './overlays/EnergyPulse';
+import type { InteractionCallbacks, ContextMenuItem } from '../interaction/types';
 
 // ==========================================
 // TIPAGENS
@@ -30,7 +55,7 @@ export interface NodeData extends Point2D {
   embedding: number[];
   arousal?: number;
   valence?: number;
-  z: number; // Coordenada Z para modos 3D
+  z: number;
 }
 
 export interface EdgeData {
@@ -40,6 +65,7 @@ export interface EdgeData {
 }
 
 export type ManifoldType = 'POINCARE' | 'RIEMANN' | 'MINKOWSKI' | 'EMOTION';
+export type StreamingMode = 'sse' | 'ws' | 'none';
 
 export interface PerspektiveEngineProps {
   collection?: string;
@@ -48,25 +74,34 @@ export interface PerspektiveEngineProps {
   zoom?: number;
   bloomIntensity?: number;
   lerpRate?: number;
-}
-
-interface RawNode {
-  id: string;
-  node_type: string;
-  energy: number;
-  embedding: number[];
-  arousal?: number;
-  valence?: number;
+  /** 'sse' (default), 'ws', or 'none' */
+  streamingMode?: StreamingMode;
+  /** WebSocket URL — required when streamingMode='ws' */
+  wsUrl?: string;
+  /** Enable node drag. Default: true */
+  enableDrag?: boolean;
+  /** Enable box selection. Default: true */
+  enableBoxSelect?: boolean;
+  /** Enable context menu. Default: true */
+  enableContextMenu?: boolean;
+  /** Enable Möbius zoom in Poincaré mode. Default: true */
+  enableMobiusZoom?: boolean;
+  /** Custom context menu items */
+  contextMenuItems?: ContextMenuItem[];
+  /** Interaction callbacks */
+  callbacks?: InteractionCallbacks;
 }
 
 // ==========================================
-// A FISICA DO MULTIVERSO (As 4 Lentes)
+// PROJECTION — As 4 Lentes
 // ==========================================
 
-function projectToManifold(n: { embedding: number[]; valence?: number; arousal?: number; energy: number }, manifold: ManifoldType): Point3D {
+function projectToManifold(
+  n: { embedding: number[]; valence?: number; arousal?: number; energy: number },
+  manifold: ManifoldType
+): Point3D {
   if (!n.embedding || n.embedding.length < 2) return { x: 0, y: 0, z: 0.01 };
 
-  // POINCARE: Hierarquia 2D (hack do raio)
   if (manifold === 'POINCARE') {
     let sumSq = 0;
     for (let i = 0; i < n.embedding.length; i++) sumSq += n.embedding[i] * n.embedding[i];
@@ -74,241 +109,203 @@ function projectToManifold(n: { embedding: number[]; valence?: number; arousal?:
     const len = Math.sqrt(n.embedding[0] ** 2 + n.embedding[1] ** 2) || 1;
     return { x: (n.embedding[0] / len) * r, y: (n.embedding[1] / len) * r, z: 0.01 };
   }
-
-  // EMOTION: Russell Circumplex (Valencia x Excitacao 2D)
   if (manifold === 'EMOTION') {
     return { x: n.valence || 0, y: (n.arousal || 0) * 2 - 1, z: 0.01 };
   }
-
-  // RIEMANN: Esfera 3D (Projecao Estereografica Inversa)
-  // Pega o disco 2D e "enrola" numa esfera. Opostos nos polos!
   if (manifold === 'RIEMANN') {
-    const px = n.embedding[0] * 3; // Escala para esfera gorda
+    const px = n.embedding[0] * 3;
     const py = n.embedding[1] * 3;
     const denom = 1 + px * px + py * py;
-    return {
-      x: (2 * px) / denom,
-      y: (2 * py) / denom,
-      z: (px * px + py * py - 1) / denom,
-    };
+    return { x: (2 * px) / denom, y: (2 * py) / denom, z: (px * px + py * py - 1) / denom };
   }
-
-  // MINKOWSKI: Espaco-Tempo Causal 3D
-  // X e Z = espaco, Y = TEMPO (torre temporal)
   if (manifold === 'MINKOWSKI') {
-    const timeY = (n.energy * 5) - 2.5; // Alta energia no topo do tempo
-    return {
-      x: n.embedding[0] * 2,
-      y: timeY,
-      z: n.embedding[1] * 2,
-    };
+    return { x: n.embedding[0] * 2, y: (n.energy * 5) - 2.5, z: n.embedding[1] * 2 };
   }
-
   return { x: 0, y: 0, z: 0.01 };
 }
 
 // ==========================================
-// GEODESICAS NEON (Edges)
+// GEODESIC EDGES
 // ==========================================
 
 function geodesicPoints(p1: Point2D, p2: Point2D, segments = 40): [number, number, number][] {
   const geo = calculateGeodesic(p1, p2);
-  if (geo.type === 'line') {
-    return [[p1.x, p1.y, 0], [p2.x, p2.y, 0]];
-  }
+  if (geo.type === 'line') return [[p1.x, p1.y, 0], [p2.x, p2.y, 0]];
   const curve = new THREE.EllipseCurve(
-    geo.center.x, geo.center.y,
-    geo.radius, geo.radius,
-    -geo.startAngle, -geo.endAngle,
-    !geo.ccw, 0
+    geo.center.x, geo.center.y, geo.radius, geo.radius,
+    -geo.startAngle, -geo.endAngle, !geo.ccw, 0
   );
   return curve.getPoints(segments).map(v => [v.x, v.y, 0]);
 }
 
-/** Edges: geodesicas no Poincare, linhas retas nos outros modos */
 const GraphEdges = ({ nodes, edges, manifold }: { nodes: NodeData[], edges: EdgeData[], manifold: ManifoldType }) => {
   const nodeMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
-
   const lines = useMemo(() => {
     return edges.map(edge => {
       const p1 = nodeMap.get(edge.source);
       const p2 = nodeMap.get(edge.target);
       if (!p1 || !p2) return null;
-
-      const opacity = 0.1 + (edge.weight * 0.4);
       const hdrColor = new THREE.Color(0x00d8ff).multiplyScalar(1.5);
-
-      // Geodesicas hiperbolicas so no Poincare, linhas retas nos outros
       const points: [number, number, number][] = manifold === 'POINCARE'
         ? geodesicPoints(p1, p2, 40)
         : [[p1.x, p1.y, p1.z], [p2.x, p2.y, p2.z]];
-
       return (
-        <Line
-          key={`${edge.source}-${edge.target}`}
-          points={points}
-          color={hdrColor}
-          lineWidth={1}
-          transparent
-          opacity={opacity}
-          blending={THREE.AdditiveBlending}
-        />
+        <Line key={`${edge.source}-${edge.target}`} points={points} color={hdrColor}
+          lineWidth={1} transparent opacity={0.1 + edge.weight * 0.4}
+          blending={THREE.AdditiveBlending} />
       );
     }).filter(Boolean);
   }, [edges, nodeMap, manifold]);
-
   return <group>{lines}</group>;
 };
 
 // ==========================================
-// CONES DE LUZ DE MINKOWSKI
+// MINKOWSKI LIGHT CONES
 // ==========================================
 
 const MinkowskiLightCones = ({ nodes, manifold }: { nodes: NodeData[], manifold: ManifoldType }) => {
   if (manifold !== 'MINKOWSKI') return null;
-
-  // Cones translucidos nos nos elite (energy > 0.8)
   const eliteNodes = nodes.filter(n => n.energy > 0.8);
-
   return (
     <group>
       {eliteNodes.map(node => (
         <group key={`cone-${node.id}`} position={[node.x, node.y, node.z]}>
-          {/* Cone do Futuro (ciano, apontando pra cima) */}
           <mesh position={[0, 1, 0]}>
             <coneGeometry args={[1, 2, 32, 1, true]} />
-            <meshBasicMaterial
-              color="#00f0ff" transparent opacity={0.08}
-              side={THREE.DoubleSide} depthWrite={false}
-              blending={THREE.AdditiveBlending}
-            />
+            <meshBasicMaterial color="#00f0ff" transparent opacity={0.08}
+              side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} />
           </mesh>
-          {/* Cone do Passado (magenta, apontando pra baixo) */}
           <mesh position={[0, -1, 0]} rotation={[Math.PI, 0, 0]}>
             <coneGeometry args={[1, 2, 32, 1, true]} />
-            <meshBasicMaterial
-              color="#ff00ff" transparent opacity={0.08}
-              side={THREE.DoubleSide} depthWrite={false}
-              blending={THREE.AdditiveBlending}
-            />
+            <meshBasicMaterial color="#ff00ff" transparent opacity={0.08}
+              side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} />
           </mesh>
         </group>
       ))}
-      {/* Grid de espaco-tempo */}
       <gridHelper args={[10, 20, 0x334155, 0x1e293b]} position={[0, -2.5, 0]} />
     </group>
   );
 };
 
 // ==========================================
-// NOS COM LERP 3D + HOVER (InstancedMesh)
+// RENDERER REF GRABBER (inside Canvas)
 // ==========================================
 
-const GraphNodes = ({ nodes, manifold, lerpRate = 0.05 }: { nodes: NodeData[], manifold: ManifoldType, lerpRate?: number }) => {
+const RendererGrabber = ({ rendererRef }: { rendererRef: RefObject<THREE.WebGLRenderer | null> }) => {
+  const { gl } = useThree();
+  useEffect(() => {
+    (rendererRef as any).current = gl;
+  }, [gl, rendererRef]);
+  return null;
+};
+
+// ==========================================
+// NODES — InstancedMesh + Drag + Hover
+// ==========================================
+
+const GraphNodes = ({
+  nodes, manifold, lerpRate = 0.05,
+  controlsRef, enableDrag, callbacks,
+}: {
+  nodes: NodeData[];
+  manifold: ManifoldType;
+  lerpRate?: number;
+  controlsRef: RefObject<any>;
+  enableDrag: boolean;
+  callbacks?: InteractionCallbacks;
+}) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const [hoveredNode, setHoveredNode] = useState<NodeData | null>(null);
 
   const { matchedIds, isActive: filterActive } = useFilter();
+  const { selectedIds } = useSelection();
 
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const color = useMemo(() => new THREE.Color(), []);
   const targetPos = useMemo(() => new THREE.Vector3(), []);
   const currentPos = useMemo(() => new THREE.Vector3(), []);
 
-  // Setup inicial
+  // Drag hook
+  const { handlePointerDown, handlePointerMove, handlePointerUp } = useDrag({
+    nodes,
+    manifold,
+    orbitControlsRef: controlsRef,
+    onUpdatePositions: (updates) => {
+      // Mutate raw node positions directly (store picks up via subscription)
+      updates.forEach(({ id, x, y, z }) => {
+        const n = nodes.find(nd => nd.id === id);
+        if (n) { n.x = x; n.y = y; n.z = z; }
+      });
+    },
+    callbacks,
+  });
+
+  // Attach drag listeners to window
+  useEffect(() => {
+    if (!enableDrag) return;
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [enableDrag, handlePointerMove, handlePointerUp]);
+
+  // Setup initial matrices
   useEffect(() => {
     if (!meshRef.current) return;
-
     nodes.forEach((node, i) => {
       dummy.position.set(node.x, node.y, node.z);
       const baseRadius = 0.01 + (node.energy * 0.03);
       const renderRadius = manifold === 'POINCARE' ? getVisualRadius(node, baseRadius) : baseRadius;
       dummy.scale.set(renderRadius, renderRadius, 1);
-
-      // No Riemann, nos olham pro centro da esfera
       if (manifold === 'RIEMANN') dummy.lookAt(0, 0, 0);
-
       dummy.updateMatrix();
       meshRef.current!.setMatrixAt(i, dummy.matrix);
 
-      // Paleta Neon Cyberpunk
-      if (node.node_type === 'Pruned') color.setHex(0x1e293b);
-      else if (node.node_type === 'Episodic') color.setHex(0x00f0ff);
-      else if (node.node_type === 'Concept') color.setHex(0xf59e0b);
-      else if (node.node_type === 'DreamSnapshot') color.setHex(0x8b5cf6);
-      else color.setHex(0x00ff66);
-
-      if (node.energy > 0.8) {
-        color.setHex(0xff00ff);
-        color.multiplyScalar(4.0);
-      } else if (node.energy > 0.5) {
-        color.multiplyScalar(2.0);
-      }
-
+      setNodeColor(node, color);
       meshRef.current!.setColorAt(i, color);
     });
-
     meshRef.current.instanceMatrix.needsUpdate = true;
     if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
   }, [nodes, dummy, color, manifold]);
 
-  // LERP 3D — 60fps, movimento organico em X/Y/Z
+  // LERP + filter dimming
   useFrame(() => {
     if (!meshRef.current) return;
     let needsUpdate = false;
-
     nodes.forEach((node, i) => {
       meshRef.current!.getMatrixAt(i, dummy.matrix);
       currentPos.setFromMatrixPosition(dummy.matrix);
       targetPos.set(node.x, node.y, node.z);
-
       const isHighlighted = !filterActive || matchedIds.has(node.id);
 
       if (currentPos.distanceTo(targetPos) > 0.001 || filterActive) {
         currentPos.lerp(targetPos, lerpRate);
         const baseRadius = 0.01 + (node.energy * 0.03);
-        const radius = manifold === 'POINCARE' 
-          ? getVisualRadius(node, isHighlighted ? baseRadius : baseRadius * 0.4) 
-          : (isHighlighted ? baseRadius : baseRadius * 0.4);
-        
+        const radius = manifold === 'POINCARE'
+          ? getVisualRadius(node, isHighlighted ? baseRadius : baseRadius * 0.3)
+          : (isHighlighted ? baseRadius : baseRadius * 0.3);
+
         dummy.position.copy(currentPos);
         dummy.scale.set(radius, radius, 1);
-
         if (manifold === 'RIEMANN') dummy.lookAt(0, 0, 0);
-
         dummy.updateMatrix();
         meshRef.current!.setMatrixAt(i, dummy.matrix);
 
-        // Update color for dimming
-        if (isHighlighted) {
-           if (node.node_type === 'Pruned') color.setHex(0x1e293b);
-           else if (node.node_type === 'Episodic') color.setHex(0x00f0ff);
-           else if (node.node_type === 'Concept') color.setHex(0xf59e0b);
-           else if (node.node_type === 'DreamSnapshot') color.setHex(0x8b5cf6);
-           else color.setHex(0x00ff66);
-
-           if (node.energy > 0.8) {
-             color.setHex(0xff00ff);
-             color.multiplyScalar(4.0);
-           } else if (node.energy > 0.5) {
-             color.multiplyScalar(2.0);
-           }
-        } else {
-          color.setHex(0x0f172a); // Dimmed color
-        }
+        if (isHighlighted) setNodeColor(node, color);
+        else color.setHex(0x0f172a);
         meshRef.current!.setColorAt(i, color);
-        
         needsUpdate = true;
       }
     });
-
     if (needsUpdate) {
       meshRef.current.instanceMatrix.needsUpdate = true;
       if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
     }
   });
 
-  const handlePointerMove = useCallback((e: ThreeEvent<PointerEvent>) => {
+  const handlePointerMoveR3F = useCallback((e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     if (e.instanceId !== undefined && e.instanceId < nodes.length) {
       document.body.style.cursor = 'crosshair';
@@ -326,39 +323,32 @@ const GraphNodes = ({ nodes, manifold, lerpRate = 0.05 }: { nodes: NodeData[], m
       <instancedMesh
         ref={meshRef}
         args={[undefined, undefined, nodes.length]}
-        onPointerMove={handlePointerMove}
+        onPointerMove={handlePointerMoveR3F}
         onPointerOut={handlePointerOut}
+        onPointerDown={enableDrag ? (e: any) => handlePointerDown(e) : undefined}
       >
         <circleGeometry args={[1, 32]} />
         <meshBasicMaterial toneMapped={false} />
       </instancedMesh>
 
-      {/* LABELS SDF DE ALTA PERFORMANCE */}
+      {/* Selection rings inside Canvas */}
+      <SelectionHighlight nodes={nodes} manifold={manifold} />
+      <HoverHighlight hoveredNode={hoveredNode} manifold={manifold} />
+
+      {/* SDF Labels for elite nodes */}
       <NodeLabels nodes={nodes} manifold={manifold} />
 
-      {/* TOOLTIP CYBERPUNK */}
+      {/* Tooltip */}
       {hoveredNode && (
         <Html position={[hoveredNode.x, hoveredNode.y + 0.05, hoveredNode.z]} center style={{ pointerEvents: 'none' }}>
           <div style={{
-            background: 'rgba(2, 6, 23, 0.9)',
-            border: '1px solid #00f0ff',
-            color: '#fff',
-            padding: '10px',
-            borderRadius: '4px',
-            fontFamily: 'monospace',
-            width: '220px',
-            backdropFilter: 'blur(4px)',
-            boxShadow: '0 0 10px rgba(0, 240, 255, 0.5)',
+            background: 'rgba(2,6,23,0.9)', border: '1px solid #00f0ff', color: '#fff',
+            padding: '10px', borderRadius: '4px', fontFamily: 'monospace', width: '220px',
+            backdropFilter: 'blur(4px)', boxShadow: '0 0 10px rgba(0,240,255,0.5)',
           }}>
-            <div style={{ color: '#00f0ff', fontWeight: 'bold', marginBottom: 4 }}>
-              {hoveredNode.node_type}
-            </div>
-            <div style={{ fontSize: 11, color: '#94a3b8' }}>
-              ID: {hoveredNode.id.substring(0, 12)}...
-            </div>
-            <div style={{ fontSize: 11, color: '#ff00ff' }}>
-              Energy: {(hoveredNode.energy * 100).toFixed(1)}%
-            </div>
+            <div style={{ color: '#00f0ff', fontWeight: 'bold', marginBottom: 4 }}>{hoveredNode.node_type}</div>
+            <div style={{ fontSize: 11, color: '#94a3b8' }}>ID: {hoveredNode.id.substring(0, 12)}...</div>
+            <div style={{ fontSize: 11, color: '#ff00ff' }}>Energy: {(hoveredNode.energy * 100).toFixed(1)}%</div>
             {hoveredNode.valence !== undefined && (
               <div style={{ fontSize: 11, color: '#00ff66' }}>
                 Valence: {hoveredNode.valence.toFixed(2)} | Arousal: {(hoveredNode.arousal || 0).toFixed(2)}
@@ -372,8 +362,19 @@ const GraphNodes = ({ nodes, manifold, lerpRate = 0.05 }: { nodes: NodeData[], m
 };
 
 // ==========================================
-// BORDA DO DISCO (so Poincare)
+// HELPERS
 // ==========================================
+
+function setNodeColor(node: NodeData, color: THREE.Color) {
+  if (node.node_type === 'Pruned') color.setHex(0x1e293b);
+  else if (node.node_type === 'Episodic') color.setHex(0x00f0ff);
+  else if (node.node_type === 'Concept') color.setHex(0xf59e0b);
+  else if (node.node_type === 'DreamSnapshot') color.setHex(0x8b5cf6);
+  else color.setHex(0x00ff66);
+
+  if (node.energy > 0.8) { color.setHex(0xff00ff); color.multiplyScalar(4.0); }
+  else if (node.energy > 0.5) color.multiplyScalar(2.0);
+}
 
 const DiskBorder = () => {
   const points = useMemo(() => {
@@ -387,10 +388,6 @@ const DiskBorder = () => {
   return <Line points={points} color="#1e293b" transparent opacity={0.3} lineWidth={1} />;
 };
 
-// ==========================================
-// WIREFRAME DA ESFERA DE RIEMANN (so Riemann)
-// ==========================================
-
 const RiemannWireframe = ({ manifold }: { manifold: ManifoldType }) => {
   if (manifold !== 'RIEMANN') return null;
   return (
@@ -401,208 +398,437 @@ const RiemannWireframe = ({ manifold }: { manifold: ManifoldType }) => {
   );
 };
 
+const ReasoningTrace = ({ nodes, traceIds, manifold }: { nodes: NodeData[], traceIds: string[], manifold: ManifoldType }) => {
+  if (traceIds.length < 2) return null;
+  const points = useMemo(() => {
+    const pts: [number, number, number][] = [];
+    traceIds.forEach(id => {
+      const node = nodes.find(n => n.id === id);
+      if (node) pts.push([node.x, node.y, node.z]);
+    });
+    return pts;
+  }, [nodes, traceIds]);
+  return (
+    <group>
+      <Line points={points} color="#00f0ff" lineWidth={3} transparent opacity={0.8} />
+      <Line points={points} color="#ff00ff" lineWidth={1} transparent opacity={0.5} />
+    </group>
+  );
+};
+
 // ==========================================
-// O PALCO PRINCIPAL
+// THEME SWITCHER
 // ==========================================
 
-export const PerspektiveEngine = ({
+const THEME_NAMES = Object.keys(ThemePresets) as (keyof typeof ThemePresets)[];
+
+const ThemeSwitcher = () => {
+  const { theme, setTheme } = useTheme();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{ ...btnStyle, fontSize: 10, color: '#8b5cf6', borderColor: '#8b5cf6' }}
+      >
+        🎨 {theme.name.toUpperCase()}
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', bottom: '100%', right: 0, marginBottom: 4,
+          background: 'rgba(2,6,23,0.95)', border: '1px solid #334155',
+          borderRadius: 4, overflow: 'hidden', zIndex: 200,
+        }}>
+          {THEME_NAMES.map(name => (
+            <button
+              key={name}
+              onClick={() => { setTheme(ThemePresets[name] as any); setOpen(false); }}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left',
+                background: theme.name === name ? 'rgba(139,92,246,0.2)' : 'transparent',
+                border: 'none', color: theme.name === name ? '#8b5cf6' : '#94a3b8',
+                fontFamily: 'monospace', fontSize: 11, padding: '6px 14px', cursor: 'pointer',
+              }}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ==========================================
+// MAIN ENGINE
+// ==========================================
+
+const PerspektiveEngineInner = ({
   collection = 'default',
   apiBase = '',
   limit = 2000,
   zoom = 300,
   bloomIntensity = 1.5,
   lerpRate = 0.05,
+  streamingMode = 'sse',
+  wsUrl,
+  enableDrag = true,
+  enableBoxSelect = true,
+  enableContextMenu = true,
+  enableMobiusZoom = true,
+  contextMenuItems,
+  callbacks,
 }: PerspektiveEngineProps) => {
   const [manifold, setManifold] = useState<ManifoldType>('POINCARE');
-  const [rawData, setRawData] = useState<{ nodes: RawNode[]; edges: EdgeData[] }>({ nodes: [], edges: [] });
   const [streaming, setStreaming] = useState(false);
+  const [wsStatus, setWsStatus] = useState<string>('');
+  const [gpuActive, setGpuActive] = useState(false);
+  const [activeTrace, setActiveTrace] = useState<string[]>([]);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showPulse, setShowPulse] = useState(true);
+
+  // Möbius zoom
+  const mobiusRef = useRef(new MobiusZoom());
+
+  // Graph store
+  const storeRef = useRef(new GraphStore());
+  const gpuRunnerRef = useRef<WebGPULayoutRunner | null>(null);
+  const semanticCameraRef = useRef<SemanticCameraAPI | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
   const controlsRef = useRef<any>(null);
   const cameraRef = useRef<THREE.OrthographicCamera>(null);
 
+  const { nodes: graphNodes, edges: graphEdges, nodeCount, edgeCount } =
+    useSyncExternalStore(
+      (l: any) => storeRef.current.subscribe(l),
+      () => storeRef.current.getSnapshot()
+    );
+
   const { setNodes } = useFilter();
+  const { deselectAll } = useSelection();
 
   const is2D = manifold === 'POINCARE' || manifold === 'EMOTION';
 
-  // Projeção reativa: recalcula quando rawData ou manifold muda (sem reconectar SSE)
+  const { betti0, betti1 } = useMemo(() => {
+    const b0 = computeBetti0(graphNodes, graphEdges);
+    const b1 = computeBetti1(graphNodes, graphEdges, b0);
+    return { betti0: b0, betti1: b1 };
+  }, [graphNodes, graphEdges]);
+
+  // Project graph onto chosen manifold, applying Möbius if needed
   const graphData = useMemo(() => {
-    const nodes = rawData.nodes.map(n => {
+    const nodes = graphNodes.map((n: NodePayload) => {
       const pos = projectToManifold(n, manifold);
-      return { ...n, ...pos } as NodeData;
+      let projected = { ...n, ...pos } as NodeData;
+      // Apply Möbius transform in Poincaré mode
+      if (manifold === 'POINCARE' && enableMobiusZoom) {
+        const mp = mobiusRef.current.project({ x: projected.x, y: projected.y });
+        projected = { ...projected, x: mp.x, y: mp.y };
+      }
+      return projected;
     });
-    const edges = rawData.edges.map(e => ({
-      source: e.source,
-      target: e.target,
-      weight: e.weight || 0.5,
+    const edges = graphEdges.map((e: EdgePayload) => ({
+      source: e.source, target: e.target, weight: e.weight || 0.5,
     }));
     return { nodes, edges };
-  }, [rawData, manifold]);
+  }, [graphNodes, graphEdges, manifold, enableMobiusZoom]);
 
-  // SSE STREAMING com fallback REST (não depende de manifold)
+  // Streaming: SSE or WebSocket
   useEffect(() => {
+    import('../math/wasm-bridge').then(m => m.initWasm());
+
+    gpuRunnerRef.current = new WebGPULayoutRunner();
+    gpuRunnerRef.current.init()
+      .then(() => console.log('🛡️ WebGPU Layout Engine Ready'))
+      .catch(e => console.warn('WebGPU not available:', e.message));
+
+    // Initial REST fetch
     fetch(`${apiBase}/api/graph?collection=${collection}&limit=${limit}`)
       .then(res => res.json())
-      .then(data => {
-        if (data && Array.isArray(data.nodes) && Array.isArray(data.edges)) {
-          setRawData(data);
-        }
-      })
+      .then(data => { if (data?.nodes) storeRef.current.loadFull(data.nodes, data.edges || []); })
       .catch(() => {});
 
-    const sseUrl = `${apiBase}/api/graph/stream?collection=${collection}`;
-    const eventSource = new EventSource(sseUrl);
+    if (streamingMode === 'sse') {
+      const sseUrl = `${apiBase}/api/graph/stream?collection=${collection}`;
+      const eventSource = new EventSource(sseUrl);
+      eventSource.onopen = () => setStreaming(true);
+      eventSource.onmessage = (event) => {
+        try {
+          if (event.data.startsWith('bin:')) {
+            const binary = Uint8Array.from(atob(event.data.substring(4)), c => c.charCodeAt(0));
+            storeRef.current.applyBinaryBatch(binary, Date.now());
+            return;
+          }
+          const data = JSON.parse(event.data);
+          if (data?.nodes || data?.edges) storeRef.current.applyDelta(data);
+        } catch { /* ignore */ }
+      };
+      eventSource.onerror = () => { setStreaming(false); eventSource.close(); };
+      return () => { eventSource.close(); setStreaming(false); gpuRunnerRef.current?.destroy(); };
 
-    eventSource.onopen = () => setStreaming(true);
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data && Array.isArray(data.nodes) && Array.isArray(data.edges)) {
-          setRawData(data);
-        }
-      } catch { /* ignora parse errors */ }
-    };
-
-    eventSource.onerror = () => {
-      setStreaming(false);
-      eventSource.close();
-    };
-
-    return () => {
-      eventSource.close();
-      setStreaming(false);
-    };
-  }, [collection, apiBase, limit]);
-
-  useEffect(() => {
-    setNodes(rawData.nodes);
-  }, [rawData.nodes, setNodes]);
-
-  // FUNÇÕES DE CÂMERA (Fit View e Zoom)
-  const handleZoom = (factor: number) => {
-    if (cameraRef.current) {
-      cameraRef.current.zoom *= factor;
-      cameraRef.current.updateProjectionMatrix();
+    } else if (streamingMode === 'ws' && wsUrl) {
+      const wsClient = new WebSocketClient({ url: wsUrl, store: storeRef.current });
+      const unsub = wsClient.subscribe(status => {
+        setStreaming(status === 'open');
+        setWsStatus(status);
+      });
+      wsClient.connect();
+      return () => { unsub(); wsClient.destroy(); gpuRunnerRef.current?.destroy(); };
     }
-  };
 
+    return () => { gpuRunnerRef.current?.destroy(); };
+  }, [collection, apiBase, limit, streamingMode, wsUrl]);
+
+  // WebGPU layout loop
+  useEffect(() => {
+    if (!gpuActive || !gpuRunnerRef.current || graphNodes.length === 0) return;
+    const ncount = graphNodes.length;
+    const initialData = new Float32Array(ncount * 6);
+    graphNodes.forEach((node: NodePayload, i: number) => {
+      initialData[i * 6 + 0] = node.x ?? 0; initialData[i * 6 + 1] = node.y ?? 0;
+      initialData[i * 6 + 2] = 0; initialData[i * 6 + 3] = 0;
+      initialData[i * 6 + 4] = node.energy ?? 0.5; initialData[i * 6 + 5] = 1.0;
+    });
+    gpuRunnerRef.current.setupBuffers(initialData);
+    let frameId: number;
+    const tick = async () => {
+      if (!gpuRunnerRef.current) return;
+      gpuRunnerRef.current.updateParams({ nodeCount: ncount, deltaTime: 0.016, viscosity: 0.9, repulsionStrength: 0.001, gravityStrength: 0.05, centerX: 0, centerY: 0 });
+      const results = await gpuRunnerRef.current.step(ncount);
+      graphNodes.forEach((n: NodePayload, i: number) => { n.x = results[i * 6]; n.y = results[i * 6 + 1]; });
+      (storeRef.current as any).handleMutation?.();
+      frameId = requestAnimationFrame(tick);
+    };
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [gpuActive, graphNodes.length]);
+
+  useEffect(() => { setNodes(graphNodes); }, [graphNodes, setNodes]);
+
+  // Camera controls
+  const handleZoom = (factor: number) => {
+    if (cameraRef.current) { cameraRef.current.zoom *= factor; cameraRef.current.updateProjectionMatrix(); }
+  };
   const handleFitView = () => {
     if (controlsRef.current && cameraRef.current) {
-      controlsRef.current.target.set(0, 0, 0); // Reseta o centro
-      cameraRef.current.position.set(0, 0, 5); // Reseta a distância
-      cameraRef.current.zoom = zoom;           // Zoom padrão
+      controlsRef.current.target.set(0, 0, 0);
+      cameraRef.current.position.set(0, 0, 5);
+      cameraRef.current.zoom = zoom;
       cameraRef.current.updateProjectionMatrix();
       controlsRef.current.update();
+      mobiusRef.current.reset();
     }
   };
 
+  // Möbius wheel handler (Poincaré only)
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    if (manifold !== 'POINCARE' || !enableMobiusZoom) return;
+    // Convert mouse position to world coordinates
+    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+    const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    const cam = cameraRef.current;
+    if (!cam) return;
+    const worldPos = new THREE.Vector3(ndcX, ndcY, 0).unproject(cam);
+    mobiusRef.current.translate({ x: worldPos.x, y: worldPos.y }, e.deltaY);
+    // Trigger a re-render by forcing store notification
+    (storeRef.current as any).handleMutation?.();
+  }, [manifold, enableMobiusZoom]);
+
+  // Context menu setup
+  const defaultContextItems: ContextMenuItem[] = useMemo(() => [
+    { label: '🔍 Focus', action: (ids) => { callbacks?.onFocus?.(ids[0]); }, icon: '🔍' },
+    { label: '📡 Expand Neighbors', action: (ids) => { callbacks?.onExpandNeighbors?.(ids[0]); }, icon: '📡', separator: true },
+    { label: '📌 Toggle Pin', action: (ids) => { callbacks?.onTogglePin?.(ids, true); }, icon: '📌' },
+    { label: '🚫 Hide', action: (ids) => { const s = useSelection.getState(); s.hideNodes(ids); callbacks?.onHide?.(ids); }, icon: '🚫', separator: true },
+    { label: '✖ Deselect All', action: () => deselectAll(), icon: '✖' },
+  ], [callbacks, deselectAll]);
+
+  const streamLabel = streamingMode === 'ws'
+    ? (streaming ? '🔌 WS STREAMING' : `🔌 WS ${wsStatus.toUpperCase()}`)
+    : (streaming ? '● SSE STREAMING' : '● POLLING');
+
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100vh', background: '#000' }}>
-
+    <div
+      style={{ position: 'relative', width: '100%', height: '100vh', background: '#000' }}
+      onWheel={enableMobiusZoom ? handleWheel : undefined}
+      role="application"
+      aria-label="Perspektive Graph Engine"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Tab') {
+          // Future: node-to-node focus cycle
+        }
+        if (e.key === 'f') handleFitView();
+        if (e.key === 'm') setManifold(prev => {
+          const m: ManifoldType[] = ['POINCARE', 'RIEMANN', 'MINKOWSKI', 'EMOTION'];
+          return m[(m.indexOf(prev) + 1) % m.length];
+        });
+      }}
+    >
       <ErrorBoundary>
-      <Canvas>
-        {/* Camera: Ortografica pro 2D, Perspectiva implícita pro 3D */}
-        {is2D && <OrthographicCamera ref={cameraRef} makeDefault position={[0, 0, 5]} zoom={zoom} />}
+        <Canvas>
+          <RendererGrabber rendererRef={rendererRef} />
 
-        {/* OrbitControls: rotacao travada nos modos 2D, livre nos 3D */}
-        <OrbitControls
-          ref={controlsRef}
-          enableRotate={!is2D}
-          enablePan={true}
-          enableZoom={true}
-        />
+          {is2D && <OrthographicCamera ref={cameraRef} makeDefault position={[0, 0, 5]} zoom={zoom} />}
+          <OrbitControls
+            ref={controlsRef}
+            enableRotate={!is2D}
+            enablePan={true}
+            enableZoom={!enableMobiusZoom || manifold !== 'POINCARE'}
+          />
 
-        {/* POINCARE: disco + borda */}
-        {manifold === 'POINCARE' && (
-          <>
-            <mesh position={[0, 0, -0.1]}>
-              <circleGeometry args={[1, 64]} />
-              <meshBasicMaterial color="#050510" />
-            </mesh>
-            <DiskBorder />
-          </>
-        )}
+          {/* Poincaré: background disk + border */}
+          {manifold === 'POINCARE' && (
+            <>
+              <mesh position={[0, 0, -0.1]}>
+                <circleGeometry args={[1, 64]} />
+                <meshBasicMaterial color="#050510" />
+              </mesh>
+              <DiskBorder />
+            </>
+          )}
 
-        {/* EMOTION: eixos do Circumplex */}
-        {manifold === 'EMOTION' && (
-          <group>
-            <Line points={[[-1, 0, 0], [1, 0, 0]]} color="#334155" transparent opacity={0.3} lineWidth={1} />
-            <Line points={[[0, -1, 0], [0, 1, 0]]} color="#334155" transparent opacity={0.3} lineWidth={1} />
-          </group>
-        )}
+          {/* Emotion: Circumplex axes */}
+          {manifold === 'EMOTION' && (
+            <group>
+              <Line points={[[-1.2, 0, 0], [1.2, 0, 0]]} color="#334155" transparent opacity={0.4} lineWidth={1} />
+              <Line points={[[0, -1.2, 0], [0, 1.2, 0]]} color="#334155" transparent opacity={0.4} lineWidth={1} />
+              {[['ALEGRIA', 0.6, 0.6], ['RAIVA', -0.6, 0.6], ['CALMA', 0.6, -0.6], ['TRISTEZA', -0.6, -0.6]].map(([label, x, y]) => (
+                <Html key={label as string} position={[x as number, y as number, 0]}>
+                  <div style={{ color: '#334155', fontFamily: 'monospace', fontSize: 9, pointerEvents: 'none' }}>{label}</div>
+                </Html>
+              ))}
+            </group>
+          )}
 
-        {/* RIEMANN: wireframe da esfera */}
-        <RiemannWireframe manifold={manifold} />
+          <RiemannWireframe manifold={manifold} />
+          <MinkowskiLightCones nodes={graphData.nodes} manifold={manifold} />
 
-        {/* MINKOWSKI: cones de luz + grid */}
-        <MinkowskiLightCones nodes={graphData.nodes} manifold={manifold} />
+          {/* Overlays */}
+          <DiffusionHeatmap nodes={graphData.nodes} visible={showHeatmap && manifold === 'POINCARE'} />
+          {showPulse && <EnergyPulse nodes={graphData.nodes} manifold={manifold} />}
 
-        {/* Edges + Nos */}
-        <GraphEdges nodes={graphData.nodes} edges={graphData.edges} manifold={manifold} />
-        <GraphNodes nodes={graphData.nodes} manifold={manifold} lerpRate={lerpRate} />
+          <GraphEdges nodes={graphData.nodes} edges={graphData.edges} manifold={manifold} />
+          <GraphNodes
+            nodes={graphData.nodes}
+            manifold={manifold}
+            lerpRate={lerpRate}
+            controlsRef={controlsRef}
+            enableDrag={enableDrag}
+            callbacks={callbacks}
+          />
 
-        {/* BLOOM CYBERPUNK */}
-        <EffectComposer enableNormalPass={false}>
-          <Bloom luminanceThreshold={0.2} mipmapBlur intensity={bloomIntensity} radius={0.8} />
-        </EffectComposer>
-      </Canvas>
+          <ReasoningTrace nodes={graphData.nodes} traceIds={activeTrace} manifold={manifold} />
+
+          <EffectComposer enableNormalPass={false}>
+            <Bloom luminanceThreshold={0.2} mipmapBlur intensity={bloomIntensity} radius={0.8} />
+          </EffectComposer>
+        </Canvas>
       </ErrorBoundary>
 
-      {/* HUD SUPERIOR: SEARCH E STATUS */}
+      {/* Box select overlay */}
+      {enableBoxSelect && <BoxSelectOverlay />}
+
+      {/* Context Menu */}
+      {enableContextMenu && (
+        <ContextMenu items={contextMenuItems || defaultContextItems} />
+      )}
+
+      {/* ── HUD TOP-LEFT ── */}
       <div style={{ position: 'absolute', top: 20, left: 20, zIndex: 10 }}>
         <h2 style={{ color: '#00f0ff', margin: '0 0 10px 0', fontFamily: 'monospace', textShadow: '0 0 5px #00f0ff' }}>
           NietzscheDB // Perspektive
         </h2>
         <SearchBar totalNodes={graphData.nodes.length} />
         <FilterPanel />
-        
+
         <div style={{ color: '#94a3b8', fontFamily: 'monospace', marginTop: '130px', fontSize: '12px', pointerEvents: 'none' }}>
           <span style={{ color: streaming ? '#00ff66' : '#f59e0b' }}>
-            ● {streaming ? 'SSE STREAMING' : 'POLLING'}
-          </span> | 
-          NOS: {graphData.nodes.length} | EDGES: {graphData.edges.length}
+            {streamLabel}
+          </span>
+          {' | '}NOS: {nodeCount} | EDGES: {edgeCount}
+          {' | '}β₀: {betti0} | β₁: {betti1}
         </div>
       </div>
 
-      {/* HUD LATERAL DIREITO: CONTROLES DE CÂMERA */}
-      <div style={{ position: 'absolute', top: 20, right: 20, display: 'flex', flexDirection: 'column', gap: '10px', zIndex: 10 }}>
-        <div style={{ display: 'flex', gap: '5px', background: 'rgba(0,0,0,0.8)', padding: '5px', borderRadius: '6px', border: '1px solid #334155' }}>
+      {/* ── HUD TOP-RIGHT ── */}
+      <div style={{ position: 'absolute', top: 20, right: 20, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 10 }}>
+        {/* Camera controls */}
+        <div style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.8)', padding: 5, borderRadius: 6, border: '1px solid #334155' }}>
           <button onClick={() => handleZoom(1.2)} style={btnStyle}>➕</button>
           <button onClick={() => handleZoom(0.8)} style={btnStyle}>➖</button>
           <button onClick={handleFitView} style={btnStyle}>[ FIT ]</button>
         </div>
+
+        {/* Overlay toggles */}
+        <div style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.8)', padding: 5, borderRadius: 6, border: '1px solid #334155' }}>
+          <button
+            onClick={() => setShowHeatmap(h => !h)}
+            style={{ ...btnStyle, color: showHeatmap ? '#00f0ff' : '#94a3b8', borderColor: showHeatmap ? '#00f0ff' : '#334155' }}
+            title="Toggle Diffusion Heatmap"
+          >🌡️</button>
+          <button
+            onClick={() => setShowPulse(p => !p)}
+            style={{ ...btnStyle, color: showPulse ? '#ff00ff' : '#94a3b8', borderColor: showPulse ? '#ff00ff' : '#334155' }}
+            title="Toggle Energy Pulse"
+          >💫</button>
+        </div>
+
+        {/* Export */}
+        <ExportToolbar rendererRef={rendererRef} nodes={graphData.nodes} edges={graphData.edges} />
+
+        {/* Theme switcher */}
+        <ThemeSwitcher />
       </div>
 
-      {/* MANIFOLD SWITCHER */}
+      {/* ── MANIFOLD SWITCHER (bottom center) ── */}
       <div style={{
         position: 'absolute', bottom: 30, left: '50%', transform: 'translateX(-50%)',
-        display: 'flex', gap: 15, background: 'rgba(0,0,0,0.8)', padding: '10px 20px',
+        display: 'flex', gap: 12, background: 'rgba(0,0,0,0.8)', padding: '10px 20px',
         border: '1px solid #334155', borderRadius: 8, backdropFilter: 'blur(10px)',
       }}>
         {(['POINCARE', 'RIEMANN', 'MINKOWSKI', 'EMOTION'] as ManifoldType[]).map(m => (
-          <button
-            key={m}
-            onClick={() => setManifold(m)}
-            style={{
-              background: manifold === m ? '#00f0ff' : 'transparent',
-              color: manifold === m ? '#000' : '#94a3b8',
-              border: `1px solid ${manifold === m ? '#00f0ff' : '#334155'}`,
-              padding: '8px 16px', borderRadius: 4, cursor: 'pointer',
-              fontFamily: 'monospace', fontWeight: 'bold', fontSize: 13,
-              textShadow: manifold === m ? 'none' : '0 0 5px rgba(0,240,255,0.3)',
-              transition: 'all 0.3s ease',
-            }}
-          >
-            {m}
-          </button>
+          <button key={m} onClick={() => setManifold(m)} style={{
+            background: manifold === m ? '#00f0ff' : 'transparent',
+            color: manifold === m ? '#000' : '#94a3b8',
+            border: `1px solid ${manifold === m ? '#00f0ff' : '#334155'}`,
+            padding: '8px 16px', borderRadius: 4, cursor: 'pointer',
+            fontFamily: 'monospace', fontWeight: 'bold', fontSize: 13,
+            transition: 'all 0.3s ease',
+          }}>{m}</button>
         ))}
+      </div>
+
+      {/* ── GPU TOGGLE (bottom right) ── */}
+      <div style={{ position: 'absolute', bottom: 30, right: 30, zIndex: 10 }}>
+        <button onClick={() => setGpuActive(!gpuActive)} style={{
+          ...btnStyle,
+          borderColor: gpuActive ? '#00ff66' : '#334155',
+          color: gpuActive ? '#00ff66' : '#fff',
+          background: gpuActive ? 'rgba(0,255,102,0.1)' : 'rgba(0,0,0,0.8)',
+        }}>
+          {gpuActive ? '🚀 GPU ACTIVE' : '📡 USE GPU LAYOUT'}
+        </button>
       </div>
     </div>
   );
 };
 
-// Estilo auxiliar para botões do HUD
-const btnStyle = {
-  background: 'transparent', color: '#fff', border: '1px solid #334155', 
-  padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontFamily: 'monospace', fontWeight: 'bold'
+// ==========================================
+// EXPORT — Wrapped in ThemeProvider
+// ==========================================
+
+export const PerspektiveEngine = (props: PerspektiveEngineProps) => (
+  <PerspektiveThemeProvider>
+    <PerspektiveEngineInner {...props} />
+  </PerspektiveThemeProvider>
+);
+
+const btnStyle: React.CSSProperties = {
+  background: 'transparent', color: '#fff', border: '1px solid #334155',
+  padding: '6px 12px', borderRadius: '4px', cursor: 'pointer',
+  fontFamily: 'monospace', fontWeight: 'bold',
 };
