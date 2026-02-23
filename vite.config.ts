@@ -10,7 +10,11 @@ export default defineConfig({
       fileName: 'index',
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'three', '@react-three/fiber', '@react-three/drei'],
+      external: [
+        'react', 'react-dom', 'three',
+        '@react-three/fiber', '@react-three/drei', '@react-three/postprocessing',
+        '@tanstack/react-query',
+      ],
     },
   },
 });

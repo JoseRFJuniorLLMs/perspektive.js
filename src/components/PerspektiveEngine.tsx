@@ -12,6 +12,10 @@ import { OrthographicCamera, OrbitControls, Line, Html } from '@react-three/drei
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { calculateGeodesic, getVisualRadius, type Point2D } from '../math/poincare';
+import { ErrorBoundary } from './ErrorBoundary';
+import { SearchBar } from '../search/SearchBar';
+import { FilterPanel } from '../search/FilterPanel';
+import { useFilter } from '../search/useFilter';
 
 // ==========================================
 // TIPAGENS
@@ -41,6 +45,18 @@ export interface PerspektiveEngineProps {
   collection?: string;
   apiBase?: string;
   limit?: number;
+  zoom?: number;
+  bloomIntensity?: number;
+  lerpRate?: number;
+}
+
+interface RawNode {
+  id: string;
+  node_type: string;
+  energy: number;
+  embedding: number[];
+  arousal?: number;
+  valence?: number;
 }
 
 // ==========================================
@@ -188,9 +204,11 @@ const MinkowskiLightCones = ({ nodes, manifold }: { nodes: NodeData[], manifold:
 // NOS COM LERP 3D + HOVER (InstancedMesh)
 // ==========================================
 
-const GraphNodes = ({ nodes, manifold }: { nodes: NodeData[], manifold: ManifoldType }) => {
+const GraphNodes = ({ nodes, manifold, lerpRate = 0.05 }: { nodes: NodeData[], manifold: ManifoldType, lerpRate?: number }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const [hoveredNode, setHoveredNode] = useState<NodeData | null>(null);
+
+  const { matchedIds, isActive: filterActive } = useFilter();
 
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const color = useMemo(() => new THREE.Color(), []);
@@ -244,10 +262,15 @@ const GraphNodes = ({ nodes, manifold }: { nodes: NodeData[], manifold: Manifold
       currentPos.setFromMatrixPosition(dummy.matrix);
       targetPos.set(node.x, node.y, node.z);
 
-      if (currentPos.distanceTo(targetPos) > 0.001) {
-        currentPos.lerp(targetPos, 0.05);
+      const isHighlighted = !filterActive || matchedIds.has(node.id);
+
+      if (currentPos.distanceTo(targetPos) > 0.001 || filterActive) {
+        currentPos.lerp(targetPos, lerpRate);
         const baseRadius = 0.01 + (node.energy * 0.03);
-        const radius = manifold === 'POINCARE' ? getVisualRadius(node, baseRadius) : baseRadius;
+        const radius = manifold === 'POINCARE' 
+          ? getVisualRadius(node, isHighlighted ? baseRadius : baseRadius * 0.4) 
+          : (isHighlighted ? baseRadius : baseRadius * 0.4);
+        
         dummy.position.copy(currentPos);
         dummy.scale.set(radius, radius, 1);
 
@@ -255,11 +278,34 @@ const GraphNodes = ({ nodes, manifold }: { nodes: NodeData[], manifold: Manifold
 
         dummy.updateMatrix();
         meshRef.current!.setMatrixAt(i, dummy.matrix);
+
+        // Update color for dimming
+        if (isHighlighted) {
+           if (node.node_type === 'Pruned') color.setHex(0x1e293b);
+           else if (node.node_type === 'Episodic') color.setHex(0x00f0ff);
+           else if (node.node_type === 'Concept') color.setHex(0xf59e0b);
+           else if (node.node_type === 'DreamSnapshot') color.setHex(0x8b5cf6);
+           else color.setHex(0x00ff66);
+
+           if (node.energy > 0.8) {
+             color.setHex(0xff00ff);
+             color.multiplyScalar(4.0);
+           } else if (node.energy > 0.5) {
+             color.multiplyScalar(2.0);
+           }
+        } else {
+          color.setHex(0x0f172a); // Dimmed color
+        }
+        meshRef.current!.setColorAt(i, color);
+        
         needsUpdate = true;
       }
     });
 
-    if (needsUpdate) meshRef.current.instanceMatrix.needsUpdate = true;
+    if (needsUpdate) {
+      meshRef.current.instanceMatrix.needsUpdate = true;
+      if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
+    }
   });
 
   const handlePointerMove = useCallback((e: ThreeEvent<PointerEvent>) => {
@@ -286,6 +332,9 @@ const GraphNodes = ({ nodes, manifold }: { nodes: NodeData[], manifold: Manifold
         <circleGeometry args={[1, 32]} />
         <meshBasicMaterial toneMapped={false} />
       </instancedMesh>
+
+      {/* LABELS SDF DE ALTA PERFORMANCE */}
+      <NodeLabels nodes={nodes} manifold={manifold} />
 
       {/* TOOLTIP CYBERPUNK */}
       {hoveredNode && (
@@ -360,32 +409,44 @@ export const PerspektiveEngine = ({
   collection = 'default',
   apiBase = '',
   limit = 2000,
+  zoom = 300,
+  bloomIntensity = 1.5,
+  lerpRate = 0.05,
 }: PerspektiveEngineProps) => {
   const [manifold, setManifold] = useState<ManifoldType>('POINCARE');
-  const [graphData, setGraphData] = useState<{ nodes: NodeData[]; edges: EdgeData[] }>({ nodes: [], edges: [] });
+  const [rawData, setRawData] = useState<{ nodes: RawNode[]; edges: EdgeData[] }>({ nodes: [], edges: [] });
   const [streaming, setStreaming] = useState(false);
+
+  const controlsRef = useRef<any>(null);
+  const cameraRef = useRef<THREE.OrthographicCamera>(null);
+
+  const { setNodes } = useFilter();
 
   const is2D = manifold === 'POINCARE' || manifold === 'EMOTION';
 
-  // Mapeia dados da API para o manifold ativo
-  const mapApiData = useCallback((data: { nodes: NodeData[]; edges: EdgeData[] }) => {
-    const mappedNodes = data.nodes.map(n => {
+  // Projeção reativa: recalcula quando rawData ou manifold muda (sem reconectar SSE)
+  const graphData = useMemo(() => {
+    const nodes = rawData.nodes.map(n => {
       const pos = projectToManifold(n, manifold);
-      return { ...n, ...pos };
+      return { ...n, ...pos } as NodeData;
     });
-    const mappedEdges = data.edges.map(e => ({
+    const edges = rawData.edges.map(e => ({
       source: e.source,
       target: e.target,
       weight: e.weight || 0.5,
     }));
-    setGraphData({ nodes: mappedNodes, edges: mappedEdges });
-  }, [manifold]);
+    return { nodes, edges };
+  }, [rawData, manifold]);
 
-  // SSE STREAMING com fallback REST
+  // SSE STREAMING com fallback REST (não depende de manifold)
   useEffect(() => {
     fetch(`${apiBase}/api/graph?collection=${collection}&limit=${limit}`)
       .then(res => res.json())
-      .then(data => mapApiData(data))
+      .then(data => {
+        if (data && Array.isArray(data.nodes) && Array.isArray(data.edges)) {
+          setRawData(data);
+        }
+      })
       .catch(() => {});
 
     const sseUrl = `${apiBase}/api/graph/stream?collection=${collection}`;
@@ -396,7 +457,9 @@ export const PerspektiveEngine = ({
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        mapApiData(data);
+        if (data && Array.isArray(data.nodes) && Array.isArray(data.edges)) {
+          setRawData(data);
+        }
       } catch { /* ignora parse errors */ }
     };
 
@@ -409,29 +472,41 @@ export const PerspektiveEngine = ({
       eventSource.close();
       setStreaming(false);
     };
-  }, [collection, apiBase, limit, mapApiData]);
+  }, [collection, apiBase, limit]);
 
-  // Remapeia quando troca de manifold
   useEffect(() => {
-    if (graphData.nodes.length > 0) {
-      const remapped = graphData.nodes.map(n => {
-        const pos = projectToManifold(n, manifold);
-        return { ...n, ...pos };
-      });
-      setGraphData(prev => ({ ...prev, nodes: remapped }));
+    setNodes(rawData.nodes);
+  }, [rawData.nodes, setNodes]);
+
+  // FUNÇÕES DE CÂMERA (Fit View e Zoom)
+  const handleZoom = (factor: number) => {
+    if (cameraRef.current) {
+      cameraRef.current.zoom *= factor;
+      cameraRef.current.updateProjectionMatrix();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manifold]);
+  };
+
+  const handleFitView = () => {
+    if (controlsRef.current && cameraRef.current) {
+      controlsRef.current.target.set(0, 0, 0); // Reseta o centro
+      cameraRef.current.position.set(0, 0, 5); // Reseta a distância
+      cameraRef.current.zoom = zoom;           // Zoom padrão
+      cameraRef.current.updateProjectionMatrix();
+      controlsRef.current.update();
+    }
+  };
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100vh', background: '#000' }}>
 
+      <ErrorBoundary>
       <Canvas>
         {/* Camera: Ortografica pro 2D, Perspectiva implícita pro 3D */}
-        {is2D && <OrthographicCamera makeDefault position={[0, 0, 5]} zoom={300} />}
+        {is2D && <OrthographicCamera ref={cameraRef} makeDefault position={[0, 0, 5]} zoom={zoom} />}
 
         {/* OrbitControls: rotacao travada nos modos 2D, livre nos 3D */}
         <OrbitControls
+          ref={controlsRef}
           enableRotate={!is2D}
           enablePan={true}
           enableZoom={true}
@@ -464,13 +539,39 @@ export const PerspektiveEngine = ({
 
         {/* Edges + Nos */}
         <GraphEdges nodes={graphData.nodes} edges={graphData.edges} manifold={manifold} />
-        <GraphNodes nodes={graphData.nodes} manifold={manifold} />
+        <GraphNodes nodes={graphData.nodes} manifold={manifold} lerpRate={lerpRate} />
 
         {/* BLOOM CYBERPUNK */}
         <EffectComposer enableNormalPass={false}>
-          <Bloom luminanceThreshold={0.2} mipmapBlur intensity={1.5} radius={0.8} />
+          <Bloom luminanceThreshold={0.2} mipmapBlur intensity={bloomIntensity} radius={0.8} />
         </EffectComposer>
       </Canvas>
+      </ErrorBoundary>
+
+      {/* HUD SUPERIOR: SEARCH E STATUS */}
+      <div style={{ position: 'absolute', top: 20, left: 20, zIndex: 10 }}>
+        <h2 style={{ color: '#00f0ff', margin: '0 0 10px 0', fontFamily: 'monospace', textShadow: '0 0 5px #00f0ff' }}>
+          NietzscheDB // Perspektive
+        </h2>
+        <SearchBar totalNodes={graphData.nodes.length} />
+        <FilterPanel />
+        
+        <div style={{ color: '#94a3b8', fontFamily: 'monospace', marginTop: '130px', fontSize: '12px', pointerEvents: 'none' }}>
+          <span style={{ color: streaming ? '#00ff66' : '#f59e0b' }}>
+            ● {streaming ? 'SSE STREAMING' : 'POLLING'}
+          </span> | 
+          NOS: {graphData.nodes.length} | EDGES: {graphData.edges.length}
+        </div>
+      </div>
+
+      {/* HUD LATERAL DIREITO: CONTROLES DE CÂMERA */}
+      <div style={{ position: 'absolute', top: 20, right: 20, display: 'flex', flexDirection: 'column', gap: '10px', zIndex: 10 }}>
+        <div style={{ display: 'flex', gap: '5px', background: 'rgba(0,0,0,0.8)', padding: '5px', borderRadius: '6px', border: '1px solid #334155' }}>
+          <button onClick={() => handleZoom(1.2)} style={btnStyle}>➕</button>
+          <button onClick={() => handleZoom(0.8)} style={btnStyle}>➖</button>
+          <button onClick={handleFitView} style={btnStyle}>[ FIT ]</button>
+        </div>
+      </div>
 
       {/* MANIFOLD SWITCHER */}
       <div style={{
@@ -496,23 +597,12 @@ export const PerspektiveEngine = ({
           </button>
         ))}
       </div>
-
-      {/* STATUS HUD */}
-      <div style={{
-        position: 'absolute', top: 20, left: 20,
-        color: '#00f0ff', fontFamily: 'monospace', pointerEvents: 'none',
-        textShadow: '0 0 5px #00f0ff',
-      }}>
-        <div style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 8 }}>
-          NietzscheDB // Perspektive.js
-        </div>
-        <div style={{ color: streaming ? '#00ff66' : '#f59e0b' }}>
-          {streaming ? '● STREAMING ACTIVE (SSE)' : '● POLLING (REST)'}
-        </div>
-        <div>COLECAO: {collection.toUpperCase()}</div>
-        <div>NOS: {graphData.nodes.length} | EDGES: {graphData.edges.length}</div>
-        <div>MANIFOLD: {manifold} {manifold === 'POINCARE' ? 'K < 0' : manifold === 'RIEMANN' ? 'K > 0' : manifold === 'MINKOWSKI' ? 'ds²' : 'V×A'}</div>
-      </div>
     </div>
   );
+};
+
+// Estilo auxiliar para botões do HUD
+const btnStyle = {
+  background: 'transparent', color: '#fff', border: '1px solid #334155', 
+  padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontFamily: 'monospace', fontWeight: 'bold'
 };

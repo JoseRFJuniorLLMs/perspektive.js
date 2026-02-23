@@ -23,85 +23,61 @@ The previous dashboard used Cosmograph and covered **~21% of features**. Perspek
 
 ## What does it do?
 
+### The Cockpit (Navigation HUD) 🕹️
+
+Integrated overlay for precise control over the artificial mind:
+
+- **Search Bar Cibernética:** Real-time fuzzy search with **Dimming Effect**. Non-matching nodes lose focus and size, highlighting only the relevant nodes without breaking the layout.
+- **Filter Panel:** Interactive chips for filtering by cortex type and a dual-thumb slider for Energy range.
+- **Camera Tools:** Integrated HUD with Zoom (+/-) and Fit View controls directly accessing the `OrbitControls` API.
+- **Labels SDF:** High-performance 3D text labels for "Elite" nodes and search results, using Signed Distance Fields for crisp rendering.
+
 ### The Manifold Switcher — 4 Lenses on the same data
 
 | Lens | Geometry | What it reveals |
-|---|---|---|
+| --- | --- | --- |
 | **Poincaré** (default) | 2D hyperbolic disk | Hierarchy: abstract concepts at center, specific memories at the edges |
 | **Riemann** | 3D rotatable sphere | Dialectical opposites at poles, synthesis at equator (Hegelian engine) |
 | **Minkowski** | 3D spacetime | Causality: light cones, Timelike/Spacelike/Lightlike edges |
 | **Emotion** | 2D Cartesian | Russell Circumplex: Valence × Arousal = the AI's memory "mood" |
 
-### Overlays (on top of any lens)
+---
 
-- **Diffusion Heatmap** — `DIFFUSE FROM $seed` result as a thermal camera
-- **Energy Pulse** — nodes "breathe" based on the `energy` property
+## Architecture (Modular)
+
+Perspektive.js is built as a modular system of 10 specialized agents:
+
+1. **Layout Algorithms** (`src/layouts/`): Pure TS implementations of Force, Tree, Radial, and Concentric layouts.
+2. **Node Interaction** (`src/interaction/`): Hooks for dragging, box-selection, and context menus.
+3. **Graph Algorithms** (`src/algorithms/`): Centrality (PageRank, Betweenness), Pathfinding (Dijkstra, A*), and Community detection.
+4. **Export System** (`src/export/`): High-res snapshotting to SVG, PNG, JSON, and GraphML.
+5. **Theming/Styling** (`src/theme/`): Context-based theme system with Cyberpunk, Monochrome, and E-Ink presets.
+6. **Advanced Edges** (`src/edges/`): Geodesic arcs, bundle routing, and temporal trails.
+7. **Search & Filtering** (`src/search/`): Zustand-powered search engine with fuzzy matching and NodeLabels.
+8. **Delta Streaming** (`src/streaming/`): `GraphStore` optimized for high-frequency incremental updates.
+9. **Accessibility** (`src/a11y/`): Semantic descriptions and screen-reader support for graph structures.
+10. **Test Suite** (`src/__tests__/`): Comprehensive validation of math and layout logic.
 
 ---
 
-## Architecture
+## Development Status
 
-```
-NietzscheDB REST API (/api/graph)
-         │
-         ▼
-   PerspektiveEngine        SSE streaming + REST fallback
-   projectToManifold()      256d → 2D/3D preserving hyperbolic depth
-         │
-         ▼
-   GraphNodes                React Three Fiber (declarative Three.js)
-   InstancedMesh             1 draw call = 100k+ nodes
-   GraphEdges                Geodesics via Cramer's Rule → EllipseCurve
-         │
-         ▼
-   GPU (WebGL)               Bloom HDR + AdditiveBlending = Neon Cyberpunk
-```
-
-### Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Rendering | Three.js via `@react-three/fiber` (R3F) |
-| Post-processing | `@react-three/postprocessing` (HDR Bloom) |
-| Data fetching | `@tanstack/react-query` + SSE (EventSource) |
-| State management | `zustand` (Manifold Switcher) |
-| Shaders | Custom GLSL (Vertex + Fragment) |
-| Build | Vite (lib mode, tree-shakeable) |
-
----
-
-## Project Structure
-
-```
-perspektive.js/
-├── package.json                 @nietzsche/perspektive v0.1.0
-├── tsconfig.json                strict, ESNext, react-jsx
-├── vite.config.ts               lib mode, externals React/Three
-│
-├── docs/
-│   └── biblioteca.md            Full architectural spec (7 libraries → 1 engine)
-│
-└── src/
-    ├── index.ts                 Public exports
-    │
-    ├── core/
-    │   ├── Engine.tsx           Main WebGL canvas (orchestrates manifolds)
-    │   └── ManifoldContext.tsx   State: which lens is active + transitions
-    │
-    ├── math/                    Mathematical brain (zero UI dependencies)
-    │   ├── poincare.ts          Geodesics, acosh distance, conformal factor, WebGL vertices
-    │   ├── klein.ts             Poincaré↔Klein conversion, O(1) collinearity
-    │   └── riemann.ts           Stereographic projection, spherical midpoint
-    │
-    ├── manifolds/               Geometry-specific renderers
-    │   ├── PoincareView.tsx     Hyperbolic disk (Bloom + InstancedMesh)
-    │   ├── MinkowskiView.tsx    Spacetime light cones
-    │   └── EmotionView.tsx      Russell Circumplex (Valence × Arousal)
-    │
-    └── components/              Live data connectors
-        ├── LivePoincareMap.tsx   REST fetch + projectTo2D + HUD overlay
-        └── PerspektiveEngine.tsx Full dashboard: 4 manifolds, hover, lerp, SSE
-```
+| Component | Status | Description |
+| --- | --- | --- |
+| Hyperbolic math (`poincare.ts`) | ✅ Done | Geodesics, distance, conformal scaling, WebGL vertices |
+| Klein math (`klein.ts`) | ✅ Done | Poincaré↔Klein conversion, O(1) collinearity |
+| Riemann math (`riemann.ts`) | ✅ Done | Stereographic projection, spherical midpoint |
+| WebGL engine (`PoincareView.tsx`) | ✅ Done | InstancedMesh + Bloom HDR + AdditiveBlending |
+| Cockpit UI (Search/Filter) | ✅ Done | Search dimming, Filter Panel, Camera HUD |
+| Labels SDF | ✅ Done | High-perf labels for Elite/Searched nodes |
+| Manifold Switcher | ✅ Done | 4 lenses with smooth Lerp 3D transitions |
+| SSE & Delta Streaming | ✅ Done | EventSource + GraphStore mutation logic |
+| 10 Internal Modules | ✅ Done | Full implementation of layouts, algorithms, interaction, etc. |
+| Raycaster hover + tooltip | ✅ Done | Cyberpunk tooltip with ID, Energy, Type, Valence |
+| Riemann sphere (3D) | ✅ Done | Stereographic projection + wireframe + OrbitControls |
+| Minkowski light cones (3D) | ✅ Done | Cyan/magenta cones on elite nodes + spacetime grid |
+| Backend REST (`nietzsche-server`) | 🟡 Pending | Verify `GET /api/graph` returns `embedding` array |
+| Real-time delta streaming | ❌ Future | Full binary WebSocket protocol (Protocol Buffers) |
 
 ---
 
@@ -111,13 +87,13 @@ perspektive.js/
 
 In hyperbolic space, the shortest path between two points **is not a straight line**. It is a circular arc that crosses the disk boundary at exactly 90 degrees (orthogonally).
 
-```
+```typescript
 calculateGeodesic(p1, p2) → ArcGeodesic | LineGeodesic
 ```
 
 Uses **Cramer's Rule** to find the center `(cx, cy)` of the orthogonal circle:
 
-```
+```typescript
 cx = ((1 + ‖p1‖²) · p2.y - (1 + ‖p2‖²) · p1.y) / (2 · (p1.x · p2.y - p2.x · p1.y))
 radius = √(cx² + cy² - 1)
 ```
@@ -126,7 +102,7 @@ Exception: if points are collinear with the origin, the geodesic is a Euclidean 
 
 ### Hyperbolic Distance
 
-```
+```typescript
 d(u,v) = acosh(1 + 2·‖u-v‖² / ((1-‖u‖²)(1-‖v‖²)))
 ```
 
@@ -136,7 +112,7 @@ Corresponds exactly to `HYPERBOLIC_DIST()` in NQL (NietzscheDB's query language)
 
 Nodes near the disk boundary appear smaller on screen, but in hyperbolic space they maintain their size. The `getVisualRadius()` function compensates using:
 
-```
+```typescript
 conformalFactor = 2 / (1 - ‖x‖²)
 visualRadius = baseEnergy / conformalFactor
 ```
@@ -144,6 +120,7 @@ visualRadius = baseEnergy / conformalFactor
 ### 256d → 2D Projection (The Radius Hack)
 
 High-dimensional vectors are projected to the 2D disk while preserving hierarchy:
+
 - **Direction**: first 2 embedding dimensions (angle on the disk)
 - **Radius**: full vector norm (hyperbolic depth)
 
@@ -153,7 +130,7 @@ This ensures that abstract concepts (center) and specific memories (boundary) ma
 
 Maps the 2D plane onto the S² sphere using inverse stereographic projection:
 
-```
+```typescript
 x_sphere = 2·px / (1 + px² + py²)
 y_sphere = 2·py / (1 + px² + py²)
 z_sphere = (px² + py² - 1) / (1 + px² + py²)
@@ -164,6 +141,7 @@ Diametrically opposed concepts land at antipodal poles. Dialectical synthesis si
 ### Minkowski Spacetime (Causal Mode)
 
 Maps the graph onto a 3D spacetime tower where Y = Time:
+
 - **X, Z axes** = spatial dimensions (from embedding)
 - **Y axis** = temporal dimension (derived from node energy)
 - **Light cones** = translucent cones on elite nodes (energy > 0.8)
@@ -179,7 +157,7 @@ Maps the graph onto a 3D spacetime tower where Y = Time:
 The visualization uses **HDR colors** (High Dynamic Range) — values above 1.0 that "bleed" light into neighboring pixels via Bloom:
 
 | NodeType | Color | HDR Multiplier |
-|---|---|---|
+| --- | --- | --- |
 | Semantic | `#00ff66` Matrix Emerald | 2× |
 | Episodic | `#00f0ff` Electric Cyan | 2× |
 | Concept | `#f59e0b` Amber | 2× |
@@ -194,26 +172,6 @@ When geodesics overlap, WebGL **sums** the colors (`THREE.AdditiveBlending`). Hi
 ### Organic Breathing
 
 Nodes interpolate smoothly to their target positions via Lerp (5% per frame), giving the sensation of a living organism. When the AI's energy changes, nodes don't teleport — they flow.
-
----
-
-## Development Status
-
-| Component | Status | Description |
-|---|---|---|
-| Hyperbolic math (`poincare.ts`) | ✅ Done | Geodesics, distance, conformal scaling, WebGL vertices |
-| Klein math (`klein.ts`) | ✅ Done | Poincaré↔Klein conversion, O(1) collinearity |
-| Riemann math (`riemann.ts`) | ✅ Done | Stereographic projection, spherical midpoint |
-| WebGL engine (`PoincareView.tsx`) | ✅ Done | InstancedMesh + Bloom HDR + AdditiveBlending |
-| React integration (`LivePoincareMap.tsx`) | ✅ Done | TanStack Query + projectTo2D + cyberpunk HUD |
-| Manifold Switcher (`PerspektiveEngine.tsx`) | ✅ Done | 4 lenses with smooth Lerp 3D transitions |
-| Raycaster hover + tooltip | ✅ Done | Cyberpunk tooltip with ID, Energy, Type, Valence |
-| Riemann sphere (3D) | ✅ Done | Stereographic projection + wireframe + OrbitControls |
-| Minkowski light cones (3D) | ✅ Done | Cyan/magenta cones on elite nodes + spacetime grid |
-| SSE streaming | ✅ Done | EventSource with REST fallback |
-| Smooth Lerp animation | ✅ Done | 3D position interpolation at 60fps |
-| Backend REST (`nietzsche-server`) | 🟡 Pending | Verify `GET /api/graph` returns `embedding` array |
-| Real-time delta streaming | ❌ Future | WebSocket/SSE sending only born/died deltas for 1M+ nodes |
 
 ---
 

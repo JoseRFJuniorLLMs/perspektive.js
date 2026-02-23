@@ -13,6 +13,7 @@ import { OrthographicCamera, MapControls, Line } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { calculateGeodesic, getVisualRadius, type Point2D } from '../math/poincare';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 export interface NodeData extends Point2D {
   id: string;
@@ -159,6 +160,7 @@ const DiskBorder = () => {
 export const PoincareView = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeData[] }) => {
   return (
     <div style={{ width: '100%', height: '100vh', background: '#000000' }}>
+      <ErrorBoundary>
       <Canvas>
         <OrthographicCamera makeDefault position={[0, 0, 5]} zoom={300} />
         <MapControls enableRotate={false} />
@@ -185,6 +187,7 @@ export const PoincareView = ({ nodes, edges }: { nodes: NodeData[], edges: EdgeD
           />
         </EffectComposer>
       </Canvas>
+      </ErrorBoundary>
     </div>
   );
 };
