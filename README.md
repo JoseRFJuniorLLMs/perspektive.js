@@ -1,15 +1,13 @@
 # Perspektive.js
-
 **A hyperbolic telescope for artificial minds.**
 
 Unified WebGL visualization engine for [NietzscheDB](https://github.com/JoseRFJuniorLLMs/NietzscheDB) — the world's only hyperbolic vector database. Renders knowledge graphs in real non-Euclidean geometry, with mathematically exact geodesics, at 60 FPS on the GPU.
 
-> *"Perspektive"* is the German spelling of "perspective". Friedrich Nietzsche — the philosopher who gives the database its name — coined the concept of **Perspektivismus**: the idea that every truth depends on the observer's point of view. This library materializes that literally: the same knowledge graph can be viewed through 4 different geometric "lenses" (Poincaré, Riemann, Minkowski, Emotion), each revealing a hidden truth about the data.
+"Perspektive" is the German spelling of "perspective". Friedrich Nietzsche — the philosopher who gives the database its name — coined the concept of **Perspektivismus**: the idea that every truth depends on the observer's point of view. This library materializes that literally: the same knowledge graph can be viewed through 4 different geometric "lenses" (Poincaré, Riemann, Minkowski, Emotion), each revealing a hidden truth about the data.
 
 ---
 
 ## Why does it exist?
-
 NietzscheDB stores AI memories in a **Poincaré ball** — not in flat Euclidean space. No existing graph library (D3, Cytoscape, Cosmograph, Sigma.js) can draw:
 
 - **Hyperbolic geodesics** (circular arcs orthogonal to the boundary, not straight lines)
@@ -24,7 +22,6 @@ The previous dashboard used Cosmograph and covered **~21% of features**. Perspek
 ## What does it do?
 
 ### The Cockpit (Navigation HUD) 🕹️
-
 Integrated overlay for precise control over the artificial mind:
 
 - **Search Bar Cibernética:** Real-time fuzzy search with **Dimming Effect**. Non-matching nodes lose focus and size, highlighting only the relevant nodes without breaking the layout.
@@ -44,7 +41,6 @@ Integrated overlay for precise control over the artificial mind:
 ---
 
 ## Architecture (Modular)
-
 Perspektive.js is built as a modular system of 10 specialized agents:
 
 1. **Layout Algorithms** (`src/layouts/`): Pure TS implementations of Force, Tree, Radial, and Concentric layouts.
@@ -77,83 +73,47 @@ Perspektive.js is built as a modular system of 10 specialized agents:
 | Riemann sphere (3D) | ✅ Done | Stereographic projection + wireframe + OrbitControls |
 | Minkowski light cones (3D) | ✅ Done | Cyan/magenta cones on elite nodes + spacetime grid |
 | Backend REST (`nietzsche-server`) | 🟡 Pending | Verify `GET /api/graph` returns `embedding` array |
-| Real-time delta streaming | ❌ Future | Full binary WebSocket protocol (Protocol Buffers) |
+| WebSocket Protocol (v0.3.0) | ✅ Done | Full binary WebSocket protocol with NodeDelta support |
 
 ---
 
 ## Implemented Mathematics
 
 ### Geodesics on the Poincaré Disk
-
 In hyperbolic space, the shortest path between two points **is not a straight line**. It is a circular arc that crosses the disk boundary at exactly 90 degrees (orthogonally).
 
-```typescript
-calculateGeodesic(p1, p2) → ArcGeodesic | LineGeodesic
-```
-
 Uses **Cramer's Rule** to find the center `(cx, cy)` of the orthogonal circle:
-
 ```typescript
 cx = ((1 + ‖p1‖²) · p2.y - (1 + ‖p2‖²) · p1.y) / (2 · (p1.x · p2.y - p2.x · p1.y))
 radius = √(cx² + cy² - 1)
 ```
-
 Exception: if points are collinear with the origin, the geodesic is a Euclidean straight line.
 
 ### Hyperbolic Distance
-
 ```typescript
 d(u,v) = acosh(1 + 2·‖u-v‖² / ((1-‖u‖²)(1-‖v‖²)))
 ```
-
 Corresponds exactly to `HYPERBOLIC_DIST()` in NQL (NietzscheDB's query language).
 
 ### Conformal Factor (Visual Correction)
-
 Nodes near the disk boundary appear smaller on screen, but in hyperbolic space they maintain their size. The `getVisualRadius()` function compensates using:
-
 ```typescript
 conformalFactor = 2 / (1 - ‖x‖²)
 visualRadius = baseEnergy / conformalFactor
 ```
 
 ### 256d → 2D Projection (The Radius Hack)
-
 High-dimensional vectors are projected to the 2D disk while preserving hierarchy:
-
 - **Direction**: first 2 embedding dimensions (angle on the disk)
 - **Radius**: full vector norm (hyperbolic depth)
 
 This ensures that abstract concepts (center) and specific memories (boundary) maintain their hierarchical positions even after dimensional flattening.
-
-### Stereographic Projection (Riemann Mode)
-
-Maps the 2D plane onto the S² sphere using inverse stereographic projection:
-
-```typescript
-x_sphere = 2·px / (1 + px² + py²)
-y_sphere = 2·py / (1 + px² + py²)
-z_sphere = (px² + py² - 1) / (1 + px² + py²)
-```
-
-Diametrically opposed concepts land at antipodal poles. Dialectical synthesis sits at the equator.
-
-### Minkowski Spacetime (Causal Mode)
-
-Maps the graph onto a 3D spacetime tower where Y = Time:
-
-- **X, Z axes** = spatial dimensions (from embedding)
-- **Y axis** = temporal dimension (derived from node energy)
-- **Light cones** = translucent cones on elite nodes (energy > 0.8)
-  - Cyan cone = future (pointing up)
-  - Magenta cone = past (pointing down)
 
 ---
 
 ## Visual Aesthetics
 
 ### Cyberpunk Neon HDR
-
 The visualization uses **HDR colors** (High Dynamic Range) — values above 1.0 that "bleed" light into neighboring pixels via Bloom:
 
 | NodeType | Color | HDR Multiplier |
@@ -166,34 +126,31 @@ The visualization uses **HDR colors** (High Dynamic Range) — values above 1.0 
 | **Übermensch** (energy > 0.8) | `#ff00ff` Pure Magenta | **4×** (explosive halo) |
 
 ### AdditiveBlending on Edges
-
 When geodesics overlap, WebGL **sums** the colors (`THREE.AdditiveBlending`). High-density zones in the graph glow like a biological brain with zero additional post-processing.
 
 ### Organic Breathing
-
 Nodes interpolate smoothly to their target positions via Lerp (5% per frame), giving the sensation of a living organism. When the AI's energy changes, nodes don't teleport — they flow.
 
 ---
 
 ## Installation
-
 ```bash
 npm install @nietzsche/perspektive
 ```
 
 Or clone and run locally:
-
 ```bash
 git clone https://github.com/JoseRFJuniorLLMs/perspektive.js.git
 cd perspektive.js
 npm install
-npm run typecheck
+npm run dev
 ```
+
+---
 
 ## Usage
 
 ### Full Dashboard (recommended)
-
 ```tsx
 import { PerspektiveEngine } from '@nietzsche/perspektive';
 
@@ -202,56 +159,9 @@ function App() {
 }
 ```
 
-Includes: Manifold Switcher, SSE streaming, hover tooltips, Lerp animation, HUD overlay.
-
-### Poincaré-only with TanStack Query
-
-```tsx
-import { LivePoincareMap } from '@nietzsche/perspektive';
-
-function App() {
-  return <LivePoincareMap collection="eva_core" apiBase="http://localhost:8080" />;
-}
-```
-
-### Raw WebGL engine with your own data
-
-```tsx
-import { PoincareView } from '@nietzsche/perspektive';
-
-const nodes = [
-  { id: '1', x: 0.0, y: 0.0, energy: 0.95, node_type: 'Concept' },
-  { id: '2', x: 0.6, y: 0.3, energy: 0.40, node_type: 'Episodic' },
-];
-const edges = [{ source: '1', target: '2', weight: 0.8 }];
-
-function App() {
-  return <PoincareView nodes={nodes} edges={edges} />;
-}
-```
-
-### Standalone math functions
-
-```typescript
-import { poincare, klein, riemann } from '@nietzsche/perspektive';
-
-// Hyperbolic distance (matches NQL's HYPERBOLIC_DIST)
-const dist = poincare.poincareDistance({ x: 0.1, y: 0.2 }, { x: 0.5, y: 0.7 });
-
-// Geodesic arc parameters for rendering
-const geo = poincare.calculateGeodesic({ x: 0.3, y: -0.2 }, { x: -0.4, y: 0.6 });
-
-// Poincaré → Klein conversion (geodesics become straight lines)
-const kp = klein.poincareToKlein({ x: 0.5, y: 0.3 });
-
-// Stereographic projection to S² sphere
-const sphere = riemann.stereographicProject({ x: 0.4, y: -0.2 });
-```
-
 ---
 
 ## Context: NietzscheDB
-
 [NietzscheDB](https://github.com/JoseRFJuniorLLMs/NietzscheDB) is a hyperbolic graph database written in Rust, designed to be the long-term memory of autonomous AIs. Its features include:
 
 - **Poincaré ball embeddings** — natural hierarchy (depth = radius)
@@ -270,21 +180,16 @@ Perspektive.js exists to make all of this **visible**.
 ---
 
 ## Why "Perspektive"?
-
 Three reasons:
-
 1. **Nietzsche was German.** The database is called NietzscheDB. The visualization library honors this with the German spelling.
-
-2. **Perspektivismus.** Nietzsche argued there is no "objective truth" — every truth is a perspective. This library materializes that: the same graph viewed through the Poincaré disk reveals hierarchy; through the Riemann sphere reveals dialectical opposites; through Minkowski reveals causality; through the Circumplex reveals emotion. Four truths. None complete on its own.
-
-3. **Perspektive is an optics project.** Literally: it transforms coordinates from one space (256-dimensional hyperbolic) to another (2D monitor screen) while preserving meaning. It is a lens.
+2. **Perspektivismus.** Nietzsche argued there is no "objective truth" — every truth is a perspective. This library materializes that: the same graph viewed through the Poincaré disk reveals hierarchy; through the Riemann sphere reveals dialectical opposites; through Minkowski reveals causality; through the Circumplex reveals emotion.
+3. **Perspektive is an optics project.** It transforms coordinates from high-dimensional hyperbolic space to a 2D monitor screen while preserving meaning. It is a lens.
 
 ---
 
 ## License
-
 MIT
 
 ---
 
-*Built for NietzscheDB by [Jose Ricardo Figueroa Junior](https://github.com/JoseRFJuniorLLMs) and Claude.*
+*Built for NietzscheDB by [Jose Ricardo Figueroa Junior](https://github.com/JoseRFJuniorLLMs).*

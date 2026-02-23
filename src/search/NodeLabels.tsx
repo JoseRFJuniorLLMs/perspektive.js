@@ -119,8 +119,18 @@ export const NodeLabels = ({ nodes, manifold, config }: NodeLabelsProps) => {
 
     // Sort by energy descending and cap at maxLabels
     candidates.sort((a, b) => b.energy - a.energy);
+    
+    // SLOD: Filter out nodes near the boundary if we are zoomed out (Poincaré only)
+    if (manifold === 'POINCARE' && !filterActive && !hasSelection) {
+      const zoomThreshold = 100;
+      const currentZoom = (camera as any).zoom || 1;
+      if (currentZoom < zoomThreshold) {
+        candidates = candidates.filter(n => Math.sqrt(n.x*n.x + n.y*n.y) < 0.85);
+      }
+    }
+
     return candidates.slice(0, cfg.maxLabels);
-  }, [nodes, cfg.show, cfg.filter, cfg.maxLabels, cfg.eliteThreshold, matchedIds, filterActive, selectedIds]);
+  }, [nodes, cfg.show, cfg.filter, cfg.maxLabels, cfg.eliteThreshold, matchedIds, filterActive, selectedIds, manifold, camera]);
 
   // --- Compute font size scaled by camera zoom ---
   // For orthographic cameras, `zoom` directly correlates with magnification.

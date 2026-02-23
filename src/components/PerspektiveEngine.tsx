@@ -12,7 +12,7 @@ import {
   useState, useMemo, useRef, useEffect, useCallback,
   useSyncExternalStore, type RefObject,
 } from 'react';
-import { Canvas, useFrame, useThree, ThreeEvent } from '@react-three/fiber';
+import { Canvas, useFrame, useThree, ThreeEvent, extend } from '@react-three/fiber';
 import { OrthographicCamera, OrbitControls, Line, Html } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
@@ -36,11 +36,24 @@ import { useDrag } from '../interaction/useDrag';
 import { useBoxSelect } from '../interaction/useBoxSelect';
 import { MobiusZoom } from '../interaction/MobiusZoom';
 import { PerspektiveThemeProvider, useTheme } from '../theme/ThemeContext';
-import { PRESETS as ThemePresets } from '../theme/presets';
+import { presets as ThemePresets } from '../theme/presets';
 import { ExportToolbar } from './overlays/ExportToolbar';
 import { DiffusionHeatmap } from './overlays/DiffusionHeatmap';
 import { EnergyPulse } from './overlays/EnergyPulse';
+import { SchrodingerEdgeMaterial } from '../materials/SchrodingerEdgeMaterial';
+import { KineticFlowEngine } from '../engine/KineticFlow';
+import { DaemonRenderer, DaemonData } from '../agents/DaemonRenderer';
 import type { InteractionCallbacks, ContextMenuItem } from '../interaction/types';
+
+extend({ SchrodingerEdgeMaterial });
+
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      schrodingerEdgeMaterial: any;
+    }
+  }
+}
 
 // ==========================================
 // TIPAGENS
@@ -138,25 +151,87 @@ function geodesicPoints(p1: Point2D, p2: Point2D, segments = 40): [number, numbe
   return curve.getPoints(segments).map(v => [v.x, v.y, 0]);
 }
 
-const GraphEdges = ({ nodes, edges, manifold }: { nodes: NodeData[], edges: EdgeData[], manifold: ManifoldType }) => {
+const GraphEdges = ({ nodes, edges, manifold, probability = 0.8 }: { nodes: NodeData[], edges: EdgeData[], manifold: ManifoldType, probability?: number }) => {
   const nodeMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
+
   const lines = useMemo(() => {
     return edges.map(edge => {
       const p1 = nodeMap.get(edge.source);
       const p2 = nodeMap.get(edge.target);
       if (!p1 || !p2) return null;
-      const hdrColor = new THREE.Color(0x00d8ff).multiplyScalar(1.5);
+      
       const points: [number, number, number][] = manifold === 'POINCARE'
         ? geodesicPoints(p1, p2, 40)
         : [[p1.x, p1.y, p1.z], [p2.x, p2.y, p2.z]];
+
       return (
-        <Line key={`${edge.source}-${edge.target}`} points={points} color={hdrColor}
-          lineWidth={1} transparent opacity={0.1 + edge.weight * 0.4}
-          blending={THREE.AdditiveBlending} />
+        <Line 
+          key={`${edge.source}-${edge.target}`} 
+          points={points} 
+          lineWidth={1} 
+          transparent 
+          opacity={0.1 + edge.weight * 0.4}
+        >
+           <schrodingerEdgeMaterial attach="material" probability={probability} color={new THREE.Color(0x00d8ff).multiplyScalar(1.5)} />
+        </Line>
       );
     }).filter(Boolean);
-  }, [edges, nodeMap, manifold]);
+  }, [edges, nodeMap, manifold, probability]);
+
   return <group>{lines}</group>;
+};
+
+// ==========================================
+// AGI OVERLAY COMPONENT
+// ==========================================
+
+const AGIOverlay = ({ 
+  nodes, edges, showFlow, showDaemons, flowEngineRef, daemonRendererRef 
+}: { 
+  nodes: NodeData[], 
+  edges: EdgeData[], 
+  showFlow: boolean, 
+  showDaemons: boolean,
+  flowEngineRef: React.MutableRefObject<KineticFlowEngine | null>,
+  daemonRendererRef: React.MutableRefObject<DaemonRenderer | null>
+}) => {
+  const { scene } = useThree();
+
+  useEffect(() => {
+    if (showFlow && !flowEngineRef.current) {
+      flowEngineRef.current = new KineticFlowEngine(scene);
+    }
+    if (showDaemons && !daemonRendererRef.current) {
+      daemonRendererRef.current = new DaemonRenderer(scene);
+    }
+  }, [showFlow, showDaemons, scene, flowEngineRef, daemonRendererRef]);
+
+  useFrame((state) => {
+    const time = state.clock.getElapsedTime();
+    if (showFlow && flowEngineRef.current) {
+      // Mock activation based on energy
+      const activeEdges = edges.map(e => ({
+        source: nodes.find(n => n.id === e.source),
+        target: nodes.find(n => n.id === e.target),
+        activation: e.weight * 0.8
+      })).filter(e => e.source && e.target);
+      flowEngineRef.current.update(activeEdges, time);
+    }
+    if (showDaemons && daemonRendererRef.current) {
+      // Mock daemons for visualization
+      const elite = nodes.filter(n => n.energy > 0.85).slice(0, 5);
+      const mockDaemons: DaemonData[] = elite.map(n => ({
+        id: `daemon-${n.id}`,
+        x: n.x,
+        y: n.y,
+        type: n.energy > 0.9 ? 'evolution' : 'patrol',
+        energy: n.energy
+      }));
+      daemonRendererRef.current.syncDaemons(mockDaemons);
+    }
+  });
+
+  return null;
 };
 
 // ==========================================
@@ -206,6 +281,7 @@ const RendererGrabber = ({ rendererRef }: { rendererRef: RefObject<THREE.WebGLRe
 const GraphNodes = ({
   nodes, manifold, lerpRate = 0.05,
   controlsRef, enableDrag, callbacks,
+  overlayEmotion
 }: {
   nodes: NodeData[];
   manifold: ManifoldType;
@@ -213,6 +289,7 @@ const GraphNodes = ({
   controlsRef: RefObject<any>;
   enableDrag: boolean;
   callbacks?: InteractionCallbacks;
+  overlayEmotion?: boolean;
 }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const [hoveredNode, setHoveredNode] = useState<NodeData | null>(null);
@@ -293,8 +370,15 @@ const GraphNodes = ({
         dummy.updateMatrix();
         meshRef.current!.setMatrixAt(i, dummy.matrix);
 
-        if (isHighlighted) setNodeColor(node, color);
-        else color.setHex(0x0f172a);
+        if (isHighlighted) {
+           if (overlayEmotion && (node as any).agColor) {
+             color.copy((node as any).agColor);
+           } else {
+             setNodeColor(node, color);
+           }
+        } else {
+           color.setHex(0x0f172a);
+        }
         meshRef.current!.setColorAt(i, color);
         needsUpdate = true;
       }
@@ -420,11 +504,10 @@ const ReasoningTrace = ({ nodes, traceIds, manifold }: { nodes: NodeData[], trac
 // THEME SWITCHER
 // ==========================================
 
-const THEME_NAMES = Object.keys(ThemePresets) as (keyof typeof ThemePresets)[];
-
 const ThemeSwitcher = () => {
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
+  const themeNames = Object.keys(ThemePresets) as (keyof typeof ThemePresets)[];
 
   return (
     <div style={{ position: 'relative' }}>
@@ -440,9 +523,9 @@ const ThemeSwitcher = () => {
           background: 'rgba(2,6,23,0.95)', border: '1px solid #334155',
           borderRadius: 4, overflow: 'hidden', zIndex: 200,
         }}>
-          {THEME_NAMES.map(name => (
+          {themeNames.map(name => (
             <button
-              key={name}
+              key={name.toString()}
               onClick={() => { setTheme(ThemePresets[name] as any); setOpen(false); }}
               style={{
                 display: 'block', width: '100%', textAlign: 'left',
@@ -451,7 +534,7 @@ const ThemeSwitcher = () => {
                 fontFamily: 'monospace', fontSize: 11, padding: '6px 14px', cursor: 'pointer',
               }}
             >
-              {name}
+              {name.toString()}
             </button>
           ))}
         </div>
@@ -487,6 +570,9 @@ const PerspektiveEngineInner = ({
   const [activeTrace, setActiveTrace] = useState<string[]>([]);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showPulse, setShowPulse] = useState(true);
+  const [showFlow, setShowFlow] = useState(true);
+  const [showDaemons, setShowDaemons] = useState(true);
+  const [overlayEmotion, setOverlayEmotion] = useState(false); // A 5ª Lente
 
   // Möbius zoom
   const mobiusRef = useRef(new MobiusZoom());
@@ -499,6 +585,9 @@ const PerspektiveEngineInner = ({
 
   const controlsRef = useRef<any>(null);
   const cameraRef = useRef<THREE.OrthographicCamera>(null);
+
+  const flowEngineRef = useRef<KineticFlowEngine | null>(null);
+  const daemonRendererRef = useRef<DaemonRenderer | null>(null);
 
   const { nodes: graphNodes, edges: graphEdges, nodeCount, edgeCount } =
     useSyncExternalStore(
@@ -527,6 +616,18 @@ const PerspektiveEngineInner = ({
         const mp = mobiusRef.current.project({ x: projected.x, y: projected.y });
         projected = { ...projected, x: mp.x, y: mp.y };
       }
+
+      // Mix Manifolds (A 5ª Lente)
+      if (overlayEmotion && (manifold === 'POINCARE' || manifold === 'MINKOWSKI')) {
+        const emotionColor = new THREE.Color().setHSL(
+          (projected.valence! + 1) / 2 * 0.4, 
+          projected.arousal! || 0.5, 
+          0.5
+        );
+        // We inject a special color prop for the renderer to pick up
+        (projected as any).agColor = emotionColor;
+      }
+
       return projected;
     });
     const edges = graphEdges.map((e: EdgePayload) => ({
@@ -712,6 +813,17 @@ const PerspektiveEngineInner = ({
           {showPulse && <EnergyPulse nodes={graphData.nodes} manifold={manifold} />}
 
           <GraphEdges nodes={graphData.nodes} edges={graphData.edges} manifold={manifold} />
+          
+          {/* AGI Overlay Logic */}
+          <AGIOverlay 
+            nodes={graphData.nodes} 
+            edges={graphData.edges} 
+            showFlow={showFlow} 
+            showDaemons={showDaemons} 
+            flowEngineRef={flowEngineRef}
+            daemonRendererRef={daemonRendererRef}
+          />
+
           <GraphNodes
             nodes={graphData.nodes}
             manifold={manifold}
@@ -719,6 +831,7 @@ const PerspektiveEngineInner = ({
             controlsRef={controlsRef}
             enableDrag={enableDrag}
             callbacks={callbacks}
+            overlayEmotion={overlayEmotion}
           />
 
           <ReasoningTrace nodes={graphData.nodes} traceIds={activeTrace} manifold={manifold} />
@@ -734,7 +847,14 @@ const PerspektiveEngineInner = ({
 
       {/* Context Menu */}
       {enableContextMenu && (
-        <ContextMenu items={contextMenuItems || defaultContextItems} />
+        <ContextMenu 
+          visible={false} // State controlled internally or externally? 
+          position={{ x: 0, y: 0 }}
+          targetIds={[]}
+          nodes={graphData.nodes}
+          customItems={contextMenuItems || defaultContextItems} 
+          onClose={() => {}}
+        />
       )}
 
       {/* ── HUD TOP-LEFT ── */}
@@ -775,6 +895,21 @@ const PerspektiveEngineInner = ({
             style={{ ...btnStyle, color: showPulse ? '#ff00ff' : '#94a3b8', borderColor: showPulse ? '#ff00ff' : '#334155' }}
             title="Toggle Energy Pulse"
           >💫</button>
+          <button
+            onClick={() => setShowFlow(f => !f)}
+            style={{ ...btnStyle, color: showFlow ? '#ff00ff' : '#94a3b8', borderColor: showFlow ? '#ff00ff' : '#334155' }}
+            title="Toggle Kinetic Heat Flow"
+          >⚡</button>
+          <button
+            onClick={() => setShowDaemons(d => !d)}
+            style={{ ...btnStyle, color: showDaemons ? '#ff9900' : '#94a3b8', borderColor: showDaemons ? '#ff9900' : '#334155' }}
+            title="Toggle Daemons"
+          >🛡️</button>
+          <button
+            onClick={() => setOverlayEmotion(e => !e)}
+            style={{ ...btnStyle, color: overlayEmotion ? '#00ff66' : '#94a3b8', borderColor: overlayEmotion ? '#00ff66' : '#334155' }}
+            title="Toggle Emotion Overlay (5th Lens)"
+          >👁️</button>
         </div>
 
         {/* Export */}
