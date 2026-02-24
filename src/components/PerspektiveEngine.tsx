@@ -43,14 +43,21 @@ import { EnergyPulse } from './overlays/EnergyPulse';
 import { SchrodingerEdgeMaterial } from '../materials/SchrodingerEdgeMaterial';
 import { KineticFlowEngine } from '../engine/KineticFlow';
 import { DaemonRenderer, DaemonData } from '../agents/DaemonRenderer';
+import { AudioPulse } from '../audio/AudioDecoder';
+import { PoincareNodeMaterial } from '../materials/PoincareNodeMaterial';
+import { PoincareBackgroundMaterial } from '../materials/PoincareBackgroundMaterial';
+import { useWebXR } from '../xr/useWebXR';
+import { EnterVRButton } from './EnterVRButton';
 import type { InteractionCallbacks, ContextMenuItem } from '../interaction/types';
 
-extend({ SchrodingerEdgeMaterial });
+extend({ SchrodingerEdgeMaterial, PoincareNodeMaterial, PoincareBackgroundMaterial });
 
 declare global {
   namespace JSX {
     interface IntrinsicElements {
       schrodingerEdgeMaterial: any;
+      poincareNodeMaterial: any;
+      poincareBackgroundMaterial: any;
     }
   }
 }
@@ -77,7 +84,7 @@ export interface EdgeData {
   weight: number;
 }
 
-export type ManifoldType = 'POINCARE' | 'RIEMANN' | 'MINKOWSKI' | 'EMOTION';
+export type ManifoldType = 'POINCARE' | 'RIEMANN' | 'MINKOWSKI' | 'EMOTION' | 'POINCARE_BALL';
 export type StreamingMode = 'sse' | 'ws' | 'none';
 
 export interface PerspektiveEngineProps {
@@ -121,6 +128,17 @@ function projectToManifold(
     const r = Math.min(Math.sqrt(sumSq), 0.99);
     const len = Math.sqrt(n.embedding[0] ** 2 + n.embedding[1] ** 2) || 1;
     return { x: (n.embedding[0] / len) * r, y: (n.embedding[1] / len) * r, z: 0.01 };
+  }
+  if (manifold === 'POINCARE_BALL') {
+    let sumSq = 0;
+    for (let i = 0; i < Math.min(n.embedding.length, 3); i++) sumSq += n.embedding[i] * n.embedding[i];
+    const r = Math.min(Math.sqrt(sumSq), 0.99);
+    const len = Math.sqrt(n.embedding[0]**2 + n.embedding[1]**2 + (n.embedding[2]||0)**2) || 1;
+    return { 
+      x: (n.embedding[0] / len) * r, 
+      y: (n.embedding[1] / len) * r, 
+      z: ((n.embedding[2] || 0) / len) * r 
+    };
   }
   if (manifold === 'EMOTION') {
     return { x: n.valence || 0, y: (n.arousal || 0) * 2 - 1, z: 0.01 };
@@ -280,8 +298,10 @@ const RendererGrabber = ({ rendererRef }: { rendererRef: RefObject<THREE.WebGLRe
 
 const GraphNodes = ({
   nodes, manifold, lerpRate = 0.05,
-  controlsRef, enableDrag, callbacks,
-  overlayEmotion
+  controlsRef, enableDrag,
+  callbacks,
+  overlayEmotion,
+  audioAmplitude = 0
 }: {
   nodes: NodeData[];
   manifold: ManifoldType;
@@ -290,6 +310,7 @@ const GraphNodes = ({
   enableDrag: boolean;
   callbacks?: InteractionCallbacks;
   overlayEmotion?: boolean;
+  audioAmplitude?: number;
 }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const [hoveredNode, setHoveredNode] = useState<NodeData | null>(null);
@@ -412,7 +433,10 @@ const GraphNodes = ({
         onPointerDown={enableDrag ? (e: any) => handlePointerDown(e) : undefined}
       >
         <circleGeometry args={[1, 32]} />
-        <meshBasicMaterial toneMapped={false} />
+        {manifold === 'POINCARE' 
+          ? <poincareNodeMaterial attach="material" uAudioAmplitude={audioAmplitude} />
+          : <meshBasicMaterial toneMapped={false} />
+        }
       </instancedMesh>
 
       {/* Selection rings inside Canvas */}
@@ -583,11 +607,24 @@ const PerspektiveEngineInner = ({
   const semanticCameraRef = useRef<SemanticCameraAPI | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
+  const audioPulseRef = useRef(new AudioPulse());
+  const [audioAmplitude, setAudioAmplitude] = useState(0);
+
   const controlsRef = useRef<any>(null);
   const cameraRef = useRef<THREE.OrthographicCamera>(null);
 
   const flowEngineRef = useRef<KineticFlowEngine | null>(null);
   const daemonRendererRef = useRef<DaemonRenderer | null>(null);
+
+  // WebXR Portal
+  const [glContext, setGlContext] = useState<WebGLRenderingContext | WebGL2RenderingContext | null>(null);
+  const { isSupported, xrSession, enterVR } = useWebXR(glContext);
+
+  useEffect(() => {
+    if (rendererRef.current) {
+        setGlContext(rendererRef.current.getContext());
+    }
+  }, [rendererRef.current]);
 
   const { nodes: graphNodes, edges: graphEdges, nodeCount, edgeCount } =
     useSyncExternalStore(
@@ -599,6 +636,7 @@ const PerspektiveEngineInner = ({
   const { deselectAll } = useSelection();
 
   const is2D = manifold === 'POINCARE' || manifold === 'EMOTION';
+  const is3D = manifold === 'POINCARE_BALL' || manifold === 'RIEMANN' || manifold === 'MINKOWSKI';
 
   const { betti0, betti1 } = useMemo(() => {
     const b0 = computeBetti0(graphNodes, graphEdges);
@@ -706,6 +744,32 @@ const PerspektiveEngineInner = ({
     return () => cancelAnimationFrame(frameId);
   }, [gpuActive, graphNodes.length]);
 
+  // Audio uniform update loop + WebXR Matrix Injection
+  useFrame((state) => {
+    const amp = audioPulseRef.current.getAmplitude();
+    if (amp !== audioAmplitude) setAudioAmplitude(amp);
+
+    const time = state.clock.getElapsedTime();
+
+    // If in VR, we might need to adjust projection or camera
+    if (xrSession) {
+       // Future: Poincaré Ball 3D Projection logic here
+    }
+
+    // Update global uniforms
+    state.scene.traverse((obj: any) => {
+      if (obj.material && obj.material.uniforms) {
+        if (obj.material.uniforms.uAudioAmplitude) obj.material.uniforms.uAudioAmplitude.value = amp;
+        if (obj.material.uniforms.u_audioAmplitude) obj.material.uniforms.u_audioAmplitude.value = amp;
+        if (obj.material.uniforms.uTime) obj.material.uniforms.uTime.value = time;
+        if (obj.material.uniforms.u_time) obj.material.uniforms.u_time.value = time;
+        if (obj.material.uniforms.u_resolution) {
+           obj.material.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+        }
+      }
+    });
+  });
+
   useEffect(() => { setNodes(graphNodes); }, [graphNodes, setNodes]);
 
   // Camera controls
@@ -785,8 +849,11 @@ const PerspektiveEngineInner = ({
           {manifold === 'POINCARE' && (
             <>
               <mesh position={[0, 0, -0.1]}>
-                <circleGeometry args={[1, 64]} />
-                <meshBasicMaterial color="#050510" />
+                <planeGeometry args={[20, 20]} />
+                <poincareBackgroundMaterial 
+                  attach="material" 
+                  u_audioAmplitude={audioAmplitude} 
+                />
               </mesh>
               <DiskBorder />
             </>
@@ -841,6 +908,9 @@ const PerspektiveEngineInner = ({
           </EffectComposer>
         </Canvas>
       </ErrorBoundary>
+
+      {/* WebXR Portal Button */}
+      <EnterVRButton isSupported={isSupported} onClick={enterVR} inSession={!!xrSession} />
 
       {/* Box select overlay */}
       {enableBoxSelect && <BoxSelectOverlay />}
@@ -925,7 +995,7 @@ const PerspektiveEngineInner = ({
         display: 'flex', gap: 12, background: 'rgba(0,0,0,0.8)', padding: '10px 20px',
         border: '1px solid #334155', borderRadius: 8, backdropFilter: 'blur(10px)',
       }}>
-        {(['POINCARE', 'RIEMANN', 'MINKOWSKI', 'EMOTION'] as ManifoldType[]).map(m => (
+        {(['POINCARE', 'POINCARE_BALL', 'RIEMANN', 'MINKOWSKI', 'EMOTION'] as ManifoldType[]).map(m => (
           <button key={m} onClick={() => setManifold(m)} style={{
             background: manifold === m ? '#00f0ff' : 'transparent',
             color: manifold === m ? '#000' : '#94a3b8',

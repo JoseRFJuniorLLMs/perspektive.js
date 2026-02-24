@@ -47,6 +47,8 @@ export type {
 // ── P2: Quantum Shaders (Bloch / Probability Clouds) ─────────────────────────
 export { BlochMaterial, QuantumEdgeMaterial } from './materials/BlochMaterial';
 export type { BlochMaterialParams } from './materials/BlochMaterial';
+export { PoincareNodeMaterial } from './materials/PoincareNodeMaterial';
+export { PoincareBackgroundMaterial } from './materials/PoincareBackgroundMaterial';
 
 // ── P2: Algorithm Visualization ──────────────────────────────────────────────
 export { CommunityHulls } from './components/CommunityHulls';
@@ -108,3 +110,9 @@ export { exportToGraphML } from './export/graphml';
 
 // ── Utilities ────────────────────────────────────────────────────────────────
 export { ErrorBoundary } from './components/ErrorBoundary';
+
+// ── P3: Audio & XR Engines (Mathematical Synesthesia) ────────────────────────
+export { extractPeaks, AudioPulse } from './audio/AudioDecoder';
+export { useHyperbolicAudio } from './audio/useHyperbolicAudio';
+export { useWebXR } from './xr/useWebXR';
+export { EnterVRButton } from './components/EnterVRButton';

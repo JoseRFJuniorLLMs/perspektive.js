@@ -41,6 +41,23 @@ Just as Nietzsche demanded we abandon the single "objective" lens, we demand you
 
 ---
 
+## 🌊 v0.3.0: Mathematical Synesthesia & The Portal
+
+In v0.3.0, we break the screen barrier. Sound and Vision now obey the laws of non-Euclidean geometry.
+
+### 🔊 Mathematical Synesthesia
+Sound in `perspektive.js` is not a waveform; it's a **topological event**.
+- **Hyperbolic Breathing**: Nodes pulse and glow using the authentic hyperbolic distance formula $d = \ln(\frac{1+r}{1-r})$.
+- **Echo of the Abyss**: Background waves that compress infinitely at the boundary of the Poincaré Disk.
+- **Fiber Optic Klein**: Geodesic edges pulse like high-speed neural signals.
+
+### 👁️ The Neural Portal (WebXR)
+Why look at the mind when you can walk inside it? 
+- **Poincaré Ball**: Native WebXR support for Oculus Quest and Vision Pro. The 2D disk collapses into a 3D spherical abyss.
+- **Physical Immersion**: Navigate 50,000+ nodes in 3D space with zero latency.
+
+---
+
 > Euclidean geometry failed the modern AI era.
 >
 > When we try to visualize RAGs, Knowledge Graphs and LLM memories in flat 2D space (D3.js, Vis.js, Cytoscape), the result is always the same useless hairball.
@@ -58,6 +75,7 @@ The math behind LLMs lives in high-dimensional space — which behaves far more 
 | Manifold | Visualization | Best for |
 |---|---|---|
 | 🌌 **Poincaré Disk** | Hierarchical trees with natural fractal compression at the edges | Hierarchical RAG, taxonomies |
+| 🔮 **Poincaré Ball** | 3D Immersive spherical abyss for VR | Large-scale AGI knowledge walking |
 | 🧭 **Klein Model** | Perfectly straight geodesic lines | Optimal semantic paths |
 | ⏳ **Minkowski Light Cones** | Temporal causality made visible | AGI reasoning timelines |
 | ⚛️ **Bloch Sphere** | Arousal and semantic entanglement as quantum states | Quantum associative memory |
@@ -68,13 +86,14 @@ The math behind LLMs lives in high-dimensional space — which behaves far more 
 npm install perspektive
 ```
 
+### Basic Usage
 ```tsx
 import { PerspektiveView } from 'perspektive';
 
 const aiMemory = {
   nodes: [
-    { id: '1', embedding: [0.1, 0.4], label: 'Symptom X', energy: 0.9 },
-    { id: '2', embedding: [-0.3, 0.2], label: 'Treatment Y', energy: 0.5 }
+    { id: '1', embedding: [0.1, 0.4, 0.2], label: 'Symptom X', energy: 0.9 },
+    { id: '2', embedding: [-0.3, 0.2, 0.5], label: 'Treatment Y', energy: 0.5 }
   ],
   edges: [
     { source: '1', target: '2', weight: 0.8 }
@@ -86,42 +105,48 @@ function App() {
     <PerspektiveView
       data={aiMemory}
       manifold="poincare"
-      enableHeatDiffusion={true}
+      enableWebXR={true} // Activate the Portal
     />
   );
 }
 ```
 
-## ✨ v0.1.0 Features
+### Activating the Synesthesia (Audio)
+```tsx
+import { AudioPulse } from 'perspektive';
 
+const pulse = new AudioPulse();
+pulse.play('/path/to/voice_of_eva.mp3');
+// Shaders will react automatically to 'u_audioAmplitude'
+```
+
+## ✨ Features
+
+- 🌌 **Hyperbolic Ball (VR)** — Native WebXR portal for immersive AGI exploration
+- 🔊 **Mathematical Synesthesia** — Shaders that "hear" and react to sound via hyperbolic distance
 - 🌌 **Poincaré Disk** — fractal expansion, zero overlap at scale
 - 🧭 **Klein Model** — semantic routes as perfect straight lines
 - ⏳ **Minkowski Light Cones** — see literally what caused what
 - ⚛️ **Bloch Sphere** — quantum fidelity and semantic entanglement
-- 🔀 **Counterfactual UI** — drag nodes to create "what-if" hypotheses (quantum entanglement visual)
+- 🔀 **Counterfactual UI** — drag nodes to create "what-if" hypotheses
 - ⏪ **Causal Scrubber** — rewind AGI decisions along the time axis
-- 🗺️ **Fractal Loader** — hyperbolic lazy loading, Google Maps style (unlimited nodes)
-- 🌊 **Live Pregel Diffusion** — real-time Chebyshev heat diffusion via WebSocket
-- 🫧 **Probability Cloud Shaders** — nodes as volumetric quantum clouds (GLSL raymarching)
+- 🗺️ **Fractal Loader** — hyperbolic lazy loading (unlimited nodes)
+- 🌊 **Live Pregel Diffusion** — real-time Chebyshev heat diffusion
+- 🫧 **Probability Cloud Shaders** — nodes as volumetric quantum clouds
 - 👥 **Community Hulls** — Louvain clusters as colored convex hulls
 - ✨ **A\* Path Highlight** — optimal routes with animated pulse
-- 📦 **WebSocket Streaming** — GraphStore with delta-ops `born/died/changed` at 60fps
-- 🎨 **Multi-theme** — cyberpunk + customizable presets
-- ♿ **Accessible** — keyboard and screen reader ready
+- 📦 **WebSocket Streaming** — GraphStore with delta-ops born/died/changed @ 60fps
 
 ## 🧩 API
 
 ```tsx
 import {
   PerspektiveView,
-  CounterfactualOverlay,
-  CausalScrubber,
-  CommunityHulls,
-  PathHighlight,
-  useFractalLoader,
-  useDiffusionWebSocket,
-  BlochMaterial,
+  AudioPulse,
+  useWebXR,
+  EnterVRButton,
   GraphStore,
+  useHyperbolicAudio
 } from 'perspektive';
 ```
 
@@ -130,43 +155,20 @@ import {
 ```ts
 interface PerspektiveProps {
   data: GraphData;
-  manifold?: 'poincare' | 'klein' | 'minkowski' | 'emotion' | 'riemann';
+  manifold?: 'poincare' | 'poincare_ball' | 'klein' | 'minkowski' | 'emotion' | 'riemann';
   width?: number | string;
   height?: number | string;
   enableHeatDiffusion?: boolean;
   enableCounterfactual?: boolean;
-  enableFractalLoad?: boolean;
-  fractalApiBase?: string;
+  enableWebXR?: boolean; // NEW: Activate VR portal
   onNodeClick?: (node: NodeData) => void;
-  onCounterfactualCreate?: (sourceId: string, targetId: string) => void;
   theme?: 'cyberpunk' | 'minimal' | 'academic';
 }
 ```
 
-## 🗺️ Roadmap: Toward the AGI Retina
-
-> Building more than a renderer — building the visual cortex for autonomous systems.
-
-1. **Causal Scrubber** ✅ — Rewind and audit the causal chain of AGI decisions (Minkowski Time Machine)
-2. **Counterfactual UI** ✅ — Quantum drag-and-drop to create visual hypotheses
-3. **Immersive WebXR** — Walk physically into AI memory using VR/AR headsets
-4. **Probability Cloud Shaders** ✅ — Volumetric GLSL raymarching for Bloch emulations
-5. **Bio-Growth Animation** — Real-time neuroplasticity and L-System topology evolution
-6. **Latent Walk "Dreaming"** — Smooth interpolation across manifolds to discover unmapped semantic bridges
-7. **Python/Jupyter Bindings** — `ipywidgets` for data scientists
-8. **GPU BVH** — Bounding Volume Hierarchy for sub-ms raycasting
-
 ## 🧠 Powered by
 
 Originally built as the visual cortex of [**NietzscheDB**](https://github.com/JoseRFJuniorLLMs/NietzscheDB) — The Temporal Hyperbolic Graph Database for AGI.
-
-## 📦 Stack
-
-- **React** 18/19 + **TypeScript**
-- **Three.js** + **@react-three/fiber** + **@react-three/drei**
-- **Zustand** (graph state)
-- **WebGL 2.0** custom shaders
-- **WebSocket** + **FlatBuffers** (high-performance binary streaming)
 
 ## 🤝 Contributing
 
