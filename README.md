@@ -1,6 +1,10 @@
-# Perspektive.js
+<p align="center">
+  <img src="img/logo.gif" alt="Perspektive.js" width="400" />
+</p>
 
-**A hyperbolic telescope for artificial minds.**
+<h1 align="center">Perspektive.js</h1>
+
+<p align="center"><strong>A hyperbolic telescope for artificial minds.</strong></p>
 
 Unified WebGL visualization engine for [NietzscheDB](https://github.com/JoseRFJuniorLLMs/NietzscheDB) — the world's only hyperbolic vector database. Renders knowledge graphs in real non-Euclidean geometry, with mathematically exact geodesics, at 60 FPS on the GPU.
 
