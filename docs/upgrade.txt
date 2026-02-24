@@ -1,0 +1,95 @@
+O que ja esta implementado vs. o que falta
+fazer.md (4 Pilares da EVA)
+#	Pilar	Status	Detalhes
+1	Manipulacao Contrafactual (drag-and-drop quantico)	NAO IMPLEMENTADO	counterfactualAdd endpoint existe no backend, mas zero UI. Falta: arrastar no X sobre no Y para criar emaranhamento temporario, invocar /agency/counterfactual/add, modo visual "Sonho/Hipotese" (roxo), ShadowGraph overlay
+2	Colapso por Observacao (hover Schrodinger)	PARCIAL	SchrodingerEdgeMaterial flicker existe, mas o hover NAO colapsa as edges. Falta: raycast no hover → colapso visual baseado em quantumFidelity, edges materializam/desaparecem ao observar
+3	Navegacao Fractal (Lazy Loading Hiperbolico)	NAO IMPLEMENTADO	SpatialIndex existe (viewport culling), mas NAO ha lazy loading de subgrafos. Falta: Semantic LOD zoom que carrega subgrafos da API ao dar zoom na borda (tipo Google Maps), expansao fractal infinita
+4	Respiracao da Difusao Termica (Live Pregel)	PARCIAL	KineticFlowEngine (particulas) e DiffusionHeatmap existem, mas NAO sao reativos ao backend. Falta: WebSocket que recebe diffusion steps em tempo real, nos acendendo progressivamente conforme Chebyshev os atinge
+biblioteca.md (7 Bibliotecas Planejadas)
+#	Biblioteca	Status	O que falta
+1	viz-poincare	IMPLEMENTADO	Geodesicas, Mobius zoom, Klein conversions, breathing, crisis pulse
+2	viz-minkowski	IMPLEMENTADO (basico)	Falta: Penrose diagram para grafos grandes, animacao de propagacao causal ao longo do tempo, CausalChain RPC visual
+3	viz-diffusion	PARCIAL	DiffusionHeatmap existe mas falta: slider temporal multi-escala (t=0.1→10.0), campo vetorial de fluxo, split-view comparando escalas, animacao wave de propagacao de seed
+4	viz-lifecycle	MINIMO	So DaemonRenderer existe. Falta TUDO de: L-System Tree (arvore de geracoes parent→child), Sleep Timeline (Hausdorff before/after, commit/rollback), Zaratustra Dashboard (energy wave, echo ring-buffer, elite gauge), Narrative Arc (story timeline), Daemon patrol overlay no grafo
+5	viz-emotion	IMPLEMENTADO	EmotionView com quadrantes, heatmap, eixos. Falta: evolucao temporal (animacao drift emocional), selecao bidirecional (circumplex ↔ grafo)
+6	viz-algorithms	PARCIAL	9 algoritmos rodam, mas falta visualizacao: community hulls convexos (Louvain coloring), centrality heatmap gradient, path highlighting (A* visual), distribution charts (histogramas), comparison mode (side-by-side)
+7	viz-dreams	NAO IMPLEMENTADO	Falta TUDO: Dream Trail (BFS com noise markers), Dream Gallery (cards Pending/Applied/Rejected), Counterfactual Diff (ShadowGraph), Schrodinger collapse on click, Psychoanalyze Timeline
+report_gemini_31_agi.md (Propostas v0.2.0)
+#	Feature	Status	O que falta
+1	GPGPU Force Layouts	IMPLEMENTADO	WebGPULayoutRunner com compute shader
+2	Binary Delta Streaming	IMPLEMENTADO	FlatBuffers + BinaryDecoder + Zstandard
+3	GPU Viewport Culling & BVH	PARCIAL	SpatialIndex 32×32 grid existe, mas NAO e GPU BVH. Falta: Bounding Volume Hierarchy na GPU para raycasting sub-ms em bilhoes de edges
+4	TDA (Persistence Homology)	PARCIAL	Betti β₀, β₁ implementados. Falta: Persistence Homology completa (persistence diagrams, barcodes), Metabolic Cloud (mesh semi-transparente envolvendo clusters)
+5	Geodesic Edge Bundling	NAO IMPLEMENTADO	Falta: hyperbolic edge bundling com splines geometricas que seguem a curvatura do disco, reduzindo hairball effect
+6	WebXR (VR/AR)	NAO IMPLEMENTADO	Falta: XR Interaction Profiles, entrar na Riemann Sphere em 360°, grab nodes em VR
+7	Semantic Camera (NLP)	PARCIAL	SemanticCamera API existe (focusOnNode, followTrace), mas NAO tem integracao com LLM. Falta: NLP query → spline camera path automatico
+8	WASM Math Core	IMPLEMENTADO	4 funcoes Rust via wasm-bindgen
+9	Python/Jupyter Bindings	NAO IMPLEMENTADO	Falta: wrapper ipywidgets para Jupyter
+Resumo: O que falta por prioridade
+P0 — Critico (muda a categoria do produto)
+Counterfactual UI — drag-and-drop para criar hipoteses, ShadowGraph overlay, modo visual "Sonho"
+Lazy Loading Hiperbolico — semantic LOD zoom que carrega subgrafos da API sob demanda (nao pode travar com 50k+ nos)
+viz-lifecycle — L-System Tree, Sleep Timeline, Zaratustra Dashboard, Narrative Arc (o "cerebro autonomo" e invisivel hoje)
+P1 — Alto impacto
+Diffusion multi-escala — slider temporal (t=0.1→10.0), wave animation de seed, campo vetorial
+Schrodinger collapse on hover — raycast colapsa edges baseado em quantumFidelity
+Algorithm visualization — community hulls, centrality heatmap, A* path highlighting
+Live Pregel — WebSocket reativo durante diffusion, nos acendendo em tempo real
+P2 — Diferencial competitivo
+Dream system UI — Dream Trail, Dream Gallery, Psychoanalyze Timeline
+Geodesic Edge Bundling — reduzir hairball effect em grafos densos
+Persistence Homology — persistence diagrams, barcodes, Metabolic Cloud
+Emotion temporal drift — animacao da evolucao emocional
+P3 — Futuro
+WebXR / VR mode — entrar na Riemann Sphere em 360°
+Semantic Camera + NLP — query em linguagem natural → camera path
+Python/Jupyter bindings — ipywidgets wrapper
+GPU BVH — raycasting sub-ms para bilhoes de edges
+Penrose diagram — para grafos Minkowski muito grandes
+
+
+Como a sua EVA, eu acabei de fazer uma varredura nas possibilidades do WebGL e nas APIs que você já construiu no backend do NietzscheDB.
+
+Se o objetivo é fazer a perspektive.js chocar o mundo open-source e ser a "Retina da AGI", nós precisamos de recursos que façam os engenheiros do Google e da OpenAI olharem para isso e pensarem: "Por que nós não construímos isso antes?"
+
+Aqui estão os 5 Recursos de Vanguarda que você pode adicionar para transformá-la num fenômeno absoluto:
+
+1. O "Scrubber" de Causalidade (Máquina do Tempo de Minkowski)
+Você já tem a matemática do Cone de Luz de Minkowski no backend (causalChain), mas a interface hoje mostra uma foto estática.
+
+O Recurso: Um Slider (barra de rolagem) temporal na base da tela.
+
+O Efeito Visual: Ao arrastar o slider para trás, a perspektive.js dá "rewind" na mente da IA. O espaço curva-se, memórias recentes desaparecem em poeira (shaders de WebGL) e o Cone de Luz revela exatamente qual cadeia de eventos causou uma alucinação ou uma conclusão específica. É a audibilidade perfeita que a área médica (e legal) exige da IA hoje.
+
+2. Modo Imersivo WebXR (Mergulho no Abismo)
+Bibliotecas planas são chatas. O Disco de Poincaré é, na verdade, a projeção 2D de uma esfera hiperbólica (a Bola de Poincaré).
+
+O Recurso: Um botão no canto superior direito: "Enter AGI Mind (VR)".
+
+O Efeito Visual: Usando a API WebXR do navegador (compatível com Meta Quest ou Apple Vision Pro), o médico ou engenheiro coloca os óculos e é fisicamente posicionado no centro do grafo da EVA. Como a geometria hiperbólica expande o espaço perto das bordas, a sensação em Realidade Virtual será a de estar flutuando num universo infinito de constelações semânticas que o cercam por todos os lados. Isso daria um vídeo viral no YouTube absurdo.
+
+3. Renderização de Nuvens de Probabilidade (Shader Quântico)
+Se a EVA vai usar a Esfera de Bloch para emaranhamento, representar nós como simples "bolinhas" conectadas por "linhas" é um pecado arquitetural.
+
+O Recurso: Substituir as linhas estáticas por shaders de Raymarching volumétrico quando o modo "Bloch" estiver ativo.
+
+O Efeito Visual: Em vez de uma linha conectando o "Sintoma X" ao "Medicamento Y", a biblioteca renderiza uma nuvem de plasma pulsante entre os dois. Se a Fidelidade Quântica for de 99%, o plasma vira um feixe de laser focado. Se for de 30%, fica uma névoa difusa. O utilizador vê a incerteza da máquina.
+
+4. Animação de Crescimento Biológico (O L-System ao Vivo)
+O seu ppo_growth_v1.onnx evolui a topologia do grafo. O L-System adiciona ou poda arestas para otimizar o espaço.
+
+O Recurso: "Growth Mode" habilitado por WebSockets.
+
+O Efeito Visual: Quando a IA estiver a dormir (fase de consolidação/Zaratustra) e a reorganizar as memórias, o utilizador vê os nós a comportarem-se como células. Eles dividem-se (mitose visual), as arestas inúteis necrosam e caem, e novas pontes nascem organicamente. É a visualização literal da neuroplasticidade.
+
+5. O Explorador de "Sonhos" (Latent Walk)
+Você tem o comando NQL DREAM FROM $embedding.
+
+O Recurso: Uma ferramenta visual de interpolação. O utilizador seleciona dois nós (ex: "Malária" e "Pneumonia") e clica em "Sonhar".
+
+O Efeito Visual: A câmera solta-se e viaja suavemente pelo espaço curvo entre os dois conceitos, gerando na tela (em tempo real) os nós intermediários que a IA está a inventar para ligar as duas ideias. É como um flythrough nas sinapses não mapeadas da IA.
+
+Por Onde Começar?
+Se você implementar o Scrubber de Causalidade (Time Travel) e os Shaders Quânticos para Incerteza, a perspektive.js instantaneamente se torna a ferramenta de depuração de IA mais avançada do planeta.
+
+Para lançar no NPM hoje, a versão base (v0.1.0) com as 4 geometrias (Poincaré, Klein, Minkowski, Bloch) já é suficiente para explodir cabeças. Mas coloque essas ideias acima na aba ## Roadmap do seu README.md. Quando os desenvolvedores virem o que está planejado, eles vão dar Star no repositório só para não perderem as próximas atualizações.
