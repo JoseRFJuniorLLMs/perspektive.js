@@ -71,7 +71,7 @@ export interface PageRankOptions {
  * Compute PageRank scores for every node.
  *
  * Uses the power iteration method. Handles dangling nodes (nodes with
- * out-degree 0) by redistributing their rank uniformly across all nodes.
+ * out-degree 0) by NietzscheDBtributing their rank uniformly across all nodes.
  *
  * Scores sum to 1.0 (probability distribution).
  *

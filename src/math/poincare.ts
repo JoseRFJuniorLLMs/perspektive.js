@@ -96,7 +96,7 @@ export function calculateGeodesic(p1: Point2D, p2: Point2D): Geodesic {
 /**
  * Calcula a distancia hiperbolica real entre dois pontos no disco.
  */
-export function poincareDistance(p1: Point2D, p2: Point2D): number {
+export function poincaNietzscheDBtance(p1: Point2D, p2: Point2D): number {
   if (isWasmReady()) {
     return getWasmDistance(p1, p2);
   }
