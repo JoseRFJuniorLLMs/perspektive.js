@@ -49,6 +49,14 @@ import { PoincareBackgroundMaterial } from '../materials/PoincareBackgroundMater
 import { useWebXR } from '../xr/useWebXR';
 import { EnterVRButton } from './EnterVRButton';
 import type { InteractionCallbacks, ContextMenuItem } from '../interaction/types';
+import { DreamOverlay } from './overlays/DreamOverlay';
+import type { DreamSession } from './overlays/DreamOverlay';
+import { CausalOverlay } from './overlays/CausalOverlay';
+import type { CausalEdge, CausalChainResult } from './overlays/CausalOverlay';
+import { ZaratustraWave } from './overlays/ZaratustraWave';
+import type { ZaratustraResult } from './overlays/ZaratustraWave';
+import { NarrativeTimeline } from './overlays/NarrativeTimeline';
+import type { NarrativeArc } from './overlays/NarrativeTimeline';
 
 extend({ SchrodingerEdgeMaterial, PoincareNodeMaterial, PoincareBackgroundMaterial });
 
@@ -110,6 +118,20 @@ export interface PerspektiveEngineProps {
   contextMenuItems?: ContextMenuItem[];
   /** Interaction callbacks */
   callbacks?: InteractionCallbacks;
+  /** Active dream session to visualize ghost nodes/edges */
+  dreamSession?: DreamSession | null;
+  /** Callback when user applies/rejects a dream */
+  onDreamAction?: (action: 'apply' | 'reject', dreamId: string) => void;
+  /** Causal edges to overlay (from causal_chain API) */
+  causalEdges?: CausalEdge[];
+  /** Active causal chain path */
+  causalChain?: CausalChainResult | null;
+  /** Zaratustra cycle result to visualize */
+  zaratustraResult?: ZaratustraResult | null;
+  /** Narrative arcs for timeline display */
+  narrativeArcs?: NarrativeArc[];
+  /** Live daemon data from backend (replaces mock daemons when provided) */
+  activeDaemons?: Array<{ id: string; x: number; y: number; type: 'entropy' | 'evolution' | 'patrol'; energy: number }>;
 }
 
 // ==========================================
@@ -203,17 +225,19 @@ const GraphEdges = ({ nodes, edges, manifold, probability = 0.8 }: { nodes: Node
 // AGI OVERLAY COMPONENT
 // ==========================================
 
-const AGIOverlay = ({ 
-  nodes, edges, showFlow, showDaemons, flowEngineRef, daemonRendererRef 
-}: { 
-  nodes: NodeData[], 
-  edges: EdgeData[], 
-  showFlow: boolean, 
+const AGIOverlay = ({
+  nodes, edges, showFlow, showDaemons, flowEngineRef, daemonRendererRef, activeDaemons
+}: {
+  nodes: NodeData[],
+  edges: EdgeData[],
+  showFlow: boolean,
   showDaemons: boolean,
   flowEngineRef: React.MutableRefObject<KineticFlowEngine | null>,
-  daemonRendererRef: React.MutableRefObject<DaemonRenderer | null>
+  daemonRendererRef: React.MutableRefObject<DaemonRenderer | null>,
+  activeDaemons?: DaemonData[],
 }) => {
   const { scene } = useThree();
+  const nodeMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
 
   useEffect(() => {
     if (showFlow && !flowEngineRef.current) {
@@ -229,23 +253,28 @@ const AGIOverlay = ({
     if (showFlow && flowEngineRef.current) {
       // Mock activation based on energy
       const activeEdges = edges.map(e => ({
-        source: nodes.find(n => n.id === e.source),
-        target: nodes.find(n => n.id === e.target),
+        source: nodeMap.get(e.source),
+        target: nodeMap.get(e.target),
         activation: e.weight * 0.8
       })).filter(e => e.source && e.target);
       flowEngineRef.current.update(activeEdges, time);
     }
     if (showDaemons && daemonRendererRef.current) {
-      // Mock daemons for visualization
-      const elite = nodes.filter(n => n.energy > 0.85).slice(0, 5);
-      const mockDaemons: DaemonData[] = elite.map(n => ({
-        id: `daemon-${n.id}`,
-        x: n.x,
-        y: n.y,
-        type: n.energy > 0.9 ? 'evolution' : 'patrol',
-        energy: n.energy
-      }));
-      daemonRendererRef.current.syncDaemons(mockDaemons);
+      if (activeDaemons && activeDaemons.length > 0) {
+        // Use real daemon data from backend
+        daemonRendererRef.current.syncDaemons(activeDaemons);
+      } else {
+        // Fallback: derive daemons from high-energy nodes
+        const elite = nodes.filter(n => n.energy > 0.85).slice(0, 5);
+        const fallbackDaemons: DaemonData[] = elite.map(n => ({
+          id: `daemon-${n.id}`,
+          x: n.x,
+          y: n.y,
+          type: n.energy > 0.9 ? 'evolution' : 'patrol',
+          energy: n.energy
+        }));
+        daemonRendererRef.current.syncDaemons(fallbackDaemons);
+      }
     }
   });
 
@@ -330,8 +359,9 @@ const GraphNodes = ({
     orbitControlsRef: controlsRef,
     onUpdatePositions: (updates) => {
       // Mutate raw node positions directly (store picks up via subscription)
+      const nodeById = new Map(nodes.map(n => [n.id, n]));
       updates.forEach(({ id, x, y, z }) => {
-        const n = nodes.find(nd => nd.id === id);
+        const n = nodeById.get(id);
         if (n) { n.x = x; n.y = y; n.z = z; }
       });
     },
@@ -509,9 +539,10 @@ const RiemannWireframe = ({ manifold }: { manifold: ManifoldType }) => {
 const ReasoningTrace = ({ nodes, traceIds, manifold }: { nodes: NodeData[], traceIds: string[], manifold: ManifoldType }) => {
   if (traceIds.length < 2) return null;
   const points = useMemo(() => {
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
     const pts: [number, number, number][] = [];
     traceIds.forEach(id => {
-      const node = nodes.find(n => n.id === id);
+      const node = nodeMap.get(id);
       if (node) pts.push([node.x, node.y, node.z]);
     });
     return pts;
@@ -586,6 +617,13 @@ const PerspektiveEngineInner = ({
   enableMobiusZoom = true,
   contextMenuItems,
   callbacks,
+  dreamSession,
+  onDreamAction,
+  causalEdges,
+  causalChain,
+  zaratustraResult,
+  narrativeArcs,
+  activeDaemons,
 }: PerspektiveEngineProps) => {
   const [manifold, setManifold] = useState<ManifoldType>('POINCARE');
   const [streaming, setStreaming] = useState(false);
@@ -597,6 +635,7 @@ const PerspektiveEngineInner = ({
   const [showFlow, setShowFlow] = useState(true);
   const [showDaemons, setShowDaemons] = useState(true);
   const [overlayEmotion, setOverlayEmotion] = useState(false); // A 5ª Lente
+  const [contextMenu, setContextMenu] = useState<{ visible: boolean; position: { x: number; y: number }; targetIds: string[] }>({ visible: false, position: { x: 0, y: 0 }, targetIds: [] });
 
   // Möbius zoom
   const mobiusRef = useRef(new MobiusZoom());
@@ -621,10 +660,13 @@ const PerspektiveEngineInner = ({
   const { isSupported, xrSession, enterVR } = useWebXR(glContext);
 
   useEffect(() => {
-    if (rendererRef.current) {
+    const timer = setTimeout(() => {
+      if (rendererRef.current) {
         setGlContext(rendererRef.current.getContext());
-    }
-  }, [rendererRef.current]);
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   const { nodes: graphNodes, edges: graphEdges, nodeCount, edgeCount } =
     useSyncExternalStore(
@@ -638,7 +680,13 @@ const PerspektiveEngineInner = ({
   const is2D = manifold === 'POINCARE' || manifold === 'EMOTION';
   const is3D = manifold === 'POINCARE_BALL' || manifold === 'RIEMANN' || manifold === 'MINKOWSKI';
 
+  // Betti numbers: offload to server for large graphs (>5k nodes)
   const { betti0, betti1 } = useMemo(() => {
+    if (graphNodes.length > 5000) {
+      // Skip client-side computation for large graphs to avoid UI freeze.
+      // Server-side WCC (β₀) and TriangleCount (β₁) are available via /api/algo/*.
+      return { betti0: -1, betti1: -1 };
+    }
     const b0 = computeBetti0(graphNodes, graphEdges);
     const b1 = computeBetti1(graphNodes, graphEdges, b0);
     return { betti0: b0, betti1: b1 };
@@ -737,7 +785,7 @@ const PerspektiveEngineInner = ({
       gpuRunnerRef.current.updateParams({ nodeCount: ncount, deltaTime: 0.016, viscosity: 0.9, repulsionStrength: 0.001, gravityStrength: 0.05, centerX: 0, centerY: 0 });
       const results = await gpuRunnerRef.current.step(ncount);
       graphNodes.forEach((n: NodePayload, i: number) => { n.x = results[i * 6]; n.y = results[i * 6 + 1]; });
-      (storeRef.current as any).handleMutation?.();
+      storeRef.current.handleMutation();
       frameId = requestAnimationFrame(tick);
     };
     frameId = requestAnimationFrame(tick);
@@ -751,21 +799,21 @@ const PerspektiveEngineInner = ({
 
     const time = state.clock.getElapsedTime();
 
-    // If in VR, we might need to adjust projection or camera
-    if (xrSession) {
-       // Future: Poincaré Ball 3D Projection logic here
+    // Auto-switch to Poincaré Ball 3D when entering VR
+    if (xrSession && manifold !== 'POINCARE_BALL') {
+       setManifold('POINCARE_BALL');
     }
 
-    // Update global uniforms
+    // Update uniforms only on materials that have them (skip non-shader objects)
     state.scene.traverse((obj: any) => {
-      if (obj.material && obj.material.uniforms) {
-        if (obj.material.uniforms.uAudioAmplitude) obj.material.uniforms.uAudioAmplitude.value = amp;
-        if (obj.material.uniforms.u_audioAmplitude) obj.material.uniforms.u_audioAmplitude.value = amp;
-        if (obj.material.uniforms.uTime) obj.material.uniforms.uTime.value = time;
-        if (obj.material.uniforms.u_time) obj.material.uniforms.u_time.value = time;
-        if (obj.material.uniforms.u_resolution) {
-           obj.material.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
-        }
+      const mat = obj.material;
+      if (!mat || !mat.uniforms) return;
+      if (mat.uniforms.uAudioAmplitude) mat.uniforms.uAudioAmplitude.value = amp;
+      if (mat.uniforms.u_audioAmplitude) mat.uniforms.u_audioAmplitude.value = amp;
+      if (mat.uniforms.uTime) mat.uniforms.uTime.value = time;
+      if (mat.uniforms.u_time) mat.uniforms.u_time.value = time;
+      if (mat.uniforms.u_resolution) {
+         mat.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
       }
     });
   });
@@ -799,7 +847,7 @@ const PerspektiveEngineInner = ({
     const worldPos = new THREE.Vector3(ndcX, ndcY, 0).unproject(cam);
     mobiusRef.current.translate({ x: worldPos.x, y: worldPos.y }, e.deltaY);
     // Trigger a re-render by forcing store notification
-    (storeRef.current as any).handleMutation?.();
+    storeRef.current.handleMutation();
   }, [manifold, enableMobiusZoom]);
 
   // Context menu setup
@@ -819,6 +867,13 @@ const PerspektiveEngineInner = ({
     <div
       style={{ position: 'relative', width: '100%', height: '100vh', background: '#000' }}
       onWheel={enableMobiusZoom ? handleWheel : undefined}
+      onContextMenu={(e) => {
+        if (!enableContextMenu) return;
+        e.preventDefault();
+        const { selectedIds } = useSelection.getState();
+        const ids = selectedIds.size > 0 ? Array.from(selectedIds) : [];
+        setContextMenu({ visible: ids.length > 0, position: { x: e.clientX, y: e.clientY }, targetIds: ids });
+      }}
       role="application"
       aria-label="Perspektive Graph Engine"
       tabIndex={0}
@@ -882,13 +937,14 @@ const PerspektiveEngineInner = ({
           <GraphEdges nodes={graphData.nodes} edges={graphData.edges} manifold={manifold} />
           
           {/* AGI Overlay Logic */}
-          <AGIOverlay 
-            nodes={graphData.nodes} 
-            edges={graphData.edges} 
-            showFlow={showFlow} 
-            showDaemons={showDaemons} 
+          <AGIOverlay
+            nodes={graphData.nodes}
+            edges={graphData.edges}
+            showFlow={showFlow}
+            showDaemons={showDaemons}
             flowEngineRef={flowEngineRef}
             daemonRendererRef={daemonRendererRef}
+            activeDaemons={activeDaemons}
           />
 
           <GraphNodes
@@ -902,6 +958,27 @@ const PerspektiveEngineInner = ({
           />
 
           <ReasoningTrace nodes={graphData.nodes} traceIds={activeTrace} manifold={manifold} />
+
+          {/* NietzscheDB Overlays */}
+          {dreamSession && (
+            <DreamOverlay
+              session={dreamSession}
+              onApply={() => onDreamAction?.('apply', dreamSession.dreamId)}
+              onReject={() => onDreamAction?.('reject', dreamSession.dreamId)}
+            />
+          )}
+          {causalEdges && causalEdges.length > 0 && (
+            <CausalOverlay
+              edges={causalEdges}
+              chain={causalChain ?? undefined}
+            />
+          )}
+          {zaratustraResult && (
+            <ZaratustraWave
+              result={zaratustraResult}
+              nodes={graphData.nodes}
+            />
+          )}
 
           <EffectComposer enableNormalPass={false}>
             <Bloom luminanceThreshold={0.2} mipmapBlur intensity={bloomIntensity} radius={0.8} />
@@ -917,14 +994,21 @@ const PerspektiveEngineInner = ({
 
       {/* Context Menu */}
       {enableContextMenu && (
-        <ContextMenu 
-          visible={false} // State controlled internally or externally? 
-          position={{ x: 0, y: 0 }}
-          targetIds={[]}
+        <ContextMenu
+          visible={contextMenu.visible}
+          position={contextMenu.position}
+          targetIds={contextMenu.targetIds}
           nodes={graphData.nodes}
-          customItems={contextMenuItems || defaultContextItems} 
-          onClose={() => {}}
+          customItems={contextMenuItems || defaultContextItems}
+          onClose={() => setContextMenu(prev => ({ ...prev, visible: false }))}
         />
+      )}
+
+      {/* Narrative Timeline */}
+      {narrativeArcs && narrativeArcs.length > 0 && (
+        <div style={{ position: 'absolute', bottom: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 10 }}>
+          <NarrativeTimeline arcs={narrativeArcs} />
+        </div>
       )}
 
       {/* ── HUD TOP-LEFT ── */}
@@ -940,7 +1024,7 @@ const PerspektiveEngineInner = ({
             {streamLabel}
           </span>
           {' | '}NOS: {nodeCount} | EDGES: {edgeCount}
-          {' | '}β₀: {betti0} | β₁: {betti1}
+          {' | '}β₀: {betti0 < 0 ? '...' : betti0} | β₁: {betti1 < 0 ? '...' : betti1}
         </div>
       </div>
 

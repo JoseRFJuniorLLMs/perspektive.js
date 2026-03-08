@@ -10,7 +10,7 @@
  * - Fires callbacks on drag start/end with new world positions
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useMemo } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSelection } from './useSelection';
@@ -124,6 +124,7 @@ export function useDrag({
   callbacks,
 }: UseDragOptions): UseDragReturn {
   const { camera, gl } = useThree();
+  const nodeMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
   const dragRef = useRef<DragRef>({
     isDragging: false,
     anchorId: null,
@@ -155,10 +156,10 @@ export function useDrag({
         ? Array.from(selectedIds)
         : [node.id];
 
-      // Store original positions for all dragged nodes
+      // Store original positions for all dragged nodes (O(1) lookup via Map)
       const originalPositions = new Map<string, THREE.Vector3>();
       for (const id of draggedIds) {
-        const n = nodes.find(nd => nd.id === id);
+        const n = nodeMap.get(id);
         if (n) {
           originalPositions.set(id, new THREE.Vector3(n.x, n.y, n.z));
         }
@@ -267,7 +268,7 @@ export function useDrag({
 
       // Fire callback with the final position of the anchor node
       if (callbacks?.onDragEnd) {
-        const anchorNode = nodes.find(n => n.id === drag.anchorId);
+        const anchorNode = nodeMap.get(drag.anchorId!);
         if (anchorNode) {
           callbacks.onDragEnd(drag.anchorId, {
             x: anchorNode.x,

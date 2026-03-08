@@ -202,7 +202,7 @@ export class GraphStore {
     }
   }
 
-  private handleMutation() {
+  public handleMutation() {
     this.dirty = true;
     this.cachedSnapshot = null;
     this.version++;

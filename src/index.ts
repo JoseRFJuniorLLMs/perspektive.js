@@ -70,7 +70,7 @@ export type { LivePoincareMapProps } from './components/LivePoincareMap';
 export { GraphStore } from './streaming/GraphStore';
 export type { GraphSnapshot, StoreListener } from './streaming/GraphStore';
 export { WebSocketClient } from './streaming/WebSocketClient';
-export type { WSStatus, WebSocketClientOptions } from './streaming/WebSocketClient';
+export type { WSStatus, WebSocketClientOptions, CDCEventType, CDCMessage, CDCEventInfo, CDCListener } from './streaming/WebSocketClient';
 export { useWebSocket } from './streaming/useWebSocket';
 
 // ── Math Modules ─────────────────────────────────────────────────────────────
@@ -116,3 +116,19 @@ export { extractPeaks, AudioPulse } from './audio/AudioDecoder';
 export { useHyperbolicAudio } from './audio/useHyperbolicAudio';
 export { useWebXR } from './xr/useWebXR';
 export { EnterVRButton } from './components/EnterVRButton';
+
+// ── NietzscheDB Integration Overlays ─────────────────────────────────────────
+export { DreamOverlay } from './components/overlays/DreamOverlay';
+export type { DreamOverlayProps, DreamSession, DreamNode, DreamEdge } from './components/overlays/DreamOverlay';
+
+export { CausalOverlay } from './components/overlays/CausalOverlay';
+export type { CausalOverlayProps, CausalEdge, CausalType, CausalDirection, CausalChainResult, CausalNeighborResult } from './components/overlays/CausalOverlay';
+
+export { ZaratustraWave } from './components/overlays/ZaratustraWave';
+export type { ZaratustraWaveProps, ZaratustraResult } from './components/overlays/ZaratustraWave';
+
+export { NarrativeTimeline } from './components/overlays/NarrativeTimeline';
+export type { NarrativeTimelineProps, NarrativeArc, ArcType } from './components/overlays/NarrativeTimeline';
+
+// ── Interaction Types ────────────────────────────────────────────────────────
+export type { InteractionCallbacks, ContextMenuItem } from './interaction/types';

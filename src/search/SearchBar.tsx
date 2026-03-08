@@ -25,6 +25,16 @@ export interface SearchBarProps {
    * If omitted, falls back to the internal node count from the filter store.
    */
   totalNodes?: number;
+  /**
+   * Enable hybrid search toggle (vector + text combined search).
+   * When enabled, shows a toggle button next to the search input.
+   */
+  enableHybridSearch?: boolean;
+  /**
+   * Callback when hybrid search is triggered.
+   * Receives the query text. Caller is responsible for API call.
+   */
+  onHybridSearch?: (query: string) => void;
 }
 
 // ==========================================
@@ -102,12 +112,13 @@ const STYLES = {
  * Cyberpunk search bar for filtering graph nodes in real-time.
  * Place this component as a sibling of the R3F `<Canvas>`, not inside it.
  */
-export const SearchBar = ({ totalNodes }: SearchBarProps) => {
+export const SearchBar = ({ totalNodes, enableHybridSearch, onHybridSearch }: SearchBarProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [localValue, setLocalValue] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  const [hybridMode, setHybridMode] = useState(false);
 
   const { matchedIds, isActive, setSearch, resetFilters, _nodes } = useFilter();
 
@@ -223,6 +234,33 @@ export const SearchBar = ({ totalNodes }: SearchBarProps) => {
           </button>
         )}
       </div>
+      {enableHybridSearch && (
+        <button
+          onClick={() => {
+            const next = !hybridMode;
+            setHybridMode(next);
+            if (next && localValue.length > 0) {
+              onHybridSearch?.(localValue);
+            }
+          }}
+          style={{
+            background: hybridMode ? 'rgba(139, 92, 246, 0.2)' : 'transparent',
+            border: `1px solid ${hybridMode ? '#8b5cf6' : '#334155'}`,
+            color: hybridMode ? '#8b5cf6' : '#64748b',
+            padding: '6px 8px',
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            fontSize: 9,
+            fontWeight: 'bold',
+            transition: 'all 0.2s ease',
+            whiteSpace: 'nowrap' as const,
+          }}
+          title="Toggle Hybrid Search (Vector + Text)"
+        >
+          {hybridMode ? 'HYBRID' : 'TEXT'}
+        </button>
+      )}
       <span style={matchStyle}>
         {isActive
           ? `${matchCount.toLocaleString()} / ${total.toLocaleString()} nodes`

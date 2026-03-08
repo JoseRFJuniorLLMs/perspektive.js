@@ -18,6 +18,33 @@ import type { GraphStore } from './GraphStore';
 export type WSStatus = 'connecting' | 'open' | 'closed' | 'error';
 export type StatusListener = (status: WSStatus) => void;
 
+/** CDC event types emitted by NietzscheDB change data capture stream. */
+export type CDCEventType =
+  | 'InsertNode'
+  | 'UpdateNode'
+  | 'DeleteNode'
+  | 'InsertEdge'
+  | 'DeleteEdge'
+  | 'SleepCycle'
+  | 'Zaratustra'
+  | 'Defibrillate';
+
+/** Incoming CDC message shape from the WebSocket. */
+export interface CDCMessage {
+  type: 'CDC';
+  event_type: CDCEventType;
+  data: any;
+}
+
+/** Info passed to CDC subscribers for the event log. */
+export interface CDCEventInfo {
+  event_type: CDCEventType;
+  node_id: string | null;
+  timestamp: number;
+}
+
+export type CDCListener = (event: CDCEventInfo) => void;
+
 export interface WebSocketClientOptions {
   /** WebSocket URL, e.g. ws://localhost:8080/api/graph/stream */
   url: string;
@@ -41,7 +68,9 @@ export class WebSocketClient {
   private ws: WebSocket | null = null;
   private status: WSStatus = 'closed';
   private listeners: Set<StatusListener> = new Set();
+  private cdcListeners: Set<CDCListener> = new Set();
   private seq = 0;
+  private _cdcEventCount = 0;
 
   // Reconnect state
   private reconnectDelayMs: number;
@@ -85,6 +114,7 @@ export class WebSocketClient {
     this.destroyed = true;
     this.disconnect();
     this.listeners.clear();
+    this.cdcListeners.clear();
   }
 
   getStatus(): WSStatus {
@@ -94,6 +124,17 @@ export class WebSocketClient {
   subscribe(listener: StatusListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** Subscribe to CDC events. Returns an unsubscribe function. */
+  subscribeCDC(listener: CDCListener): () => void {
+    this.cdcListeners.add(listener);
+    return () => this.cdcListeners.delete(listener);
+  }
+
+  /** Total number of CDC events received since client creation. */
+  get cdcEventCount(): number {
+    return this._cdcEventCount;
   }
 
   // ── Private ─────────────────────────────────────────────────────────────
@@ -157,6 +198,10 @@ export class WebSocketClient {
                     }
                     break;
 
+                  case 'CDC':
+                    this.handleCDCEvent(msg as CDCMessage);
+                    return;
+
                   default:
                     break;
                 }
@@ -195,6 +240,84 @@ export class WebSocketClient {
       console.warn('[WebSocketClient] Failed to create WebSocket:', err);
       this.setStatus('error');
       this.scheduleReconnect();
+    }
+  }
+
+  private handleCDCEvent(msg: CDCMessage): void {
+    this._cdcEventCount++;
+    const { event_type, data } = msg;
+
+    // Extract node_id from the CDC payload (varies by event type)
+    const node_id: string | null =
+      data?.id ?? data?.node_id ?? data?.source ?? null;
+
+    // Map CDC events to store delta operations
+    switch (event_type) {
+      case 'InsertNode':
+        this.store.applyDelta({
+          seq: this.seq,
+          timestamp: Date.now(),
+          nodes: [{ op: 'born', id: node_id ?? data?.id ?? '', data }],
+          edges: [],
+        });
+        break;
+
+      case 'UpdateNode':
+        this.store.applyDelta({
+          seq: this.seq,
+          timestamp: Date.now(),
+          nodes: [{ op: 'changed', id: node_id ?? data?.id ?? '', data }],
+          edges: [],
+        });
+        break;
+
+      case 'DeleteNode':
+        this.store.applyDelta({
+          seq: this.seq,
+          timestamp: Date.now(),
+          nodes: [{ op: 'died', id: node_id ?? data?.id ?? '' }],
+          edges: [],
+        });
+        break;
+
+      case 'InsertEdge':
+        this.store.applyDelta({
+          seq: this.seq,
+          timestamp: Date.now(),
+          nodes: [],
+          edges: [{
+            op: 'born',
+            source: data?.source ?? '',
+            target: data?.target ?? '',
+            data,
+          }],
+        });
+        break;
+
+      case 'DeleteEdge':
+        this.store.applyDelta({
+          seq: this.seq,
+          timestamp: Date.now(),
+          nodes: [],
+          edges: [{
+            op: 'died',
+            source: data?.source ?? '',
+            target: data?.target ?? '',
+          }],
+        });
+        break;
+
+      case 'SleepCycle':
+      case 'Zaratustra':
+      case 'Defibrillate':
+        // Lifecycle events — no store mutation, just notify CDC subscribers
+        break;
+    }
+
+    // Notify CDC subscribers for the event log
+    const info: CDCEventInfo = { event_type, node_id, timestamp: Date.now() };
+    for (const listener of this.cdcListeners) {
+      listener(info);
     }
   }
 
