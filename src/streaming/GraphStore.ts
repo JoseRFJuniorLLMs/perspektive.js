@@ -334,25 +334,29 @@ export class GraphStore {
 
   /**
    * Extract the X coordinate from a node.
-   * Falls back to the first element of the embedding vector, then 0.
+   * Uses depth for radius when embedding norm is tiny (truncated high-dim vectors).
    */
   private getNodeX(node: NodePayload): number {
     if (node.x !== undefined) return node.x;
     if (node.embedding && node.embedding.length >= 1) {
-      // Approximate Poincare projection: direction * radius
       const e = node.embedding;
       let sumSq = 0;
       for (let i = 0; i < e.length; i++) sumSq += e[i] * e[i];
-      const r = Math.min(Math.sqrt(sumSq), 0.99);
+      const embNorm = Math.sqrt(sumSq);
       const len = Math.sqrt(e[0] * e[0] + (e[1] ?? 0) * (e[1] ?? 0)) || 1;
-      return (e[0] / len) * r;
+      const dx = e[0] / len;
+      // Use depth for radius when embedding is truncated (norm < 0.1)
+      const r = embNorm < 0.1
+        ? Math.min(Math.tanh(((node as any).depth ?? 0.3) * 4) * 0.95, 0.98)
+        : Math.min(embNorm, 0.99);
+      return dx * r;
     }
     return 0;
   }
 
   /**
    * Extract the Y coordinate from a node.
-   * Falls back to the second element of the embedding vector, then 0.
+   * Uses depth for radius when embedding norm is tiny (truncated high-dim vectors).
    */
   private getNodeY(node: NodePayload): number {
     if (node.y !== undefined) return node.y;
@@ -360,9 +364,13 @@ export class GraphStore {
       const e = node.embedding;
       let sumSq = 0;
       for (let i = 0; i < e.length; i++) sumSq += e[i] * e[i];
-      const r = Math.min(Math.sqrt(sumSq), 0.99);
+      const embNorm = Math.sqrt(sumSq);
       const len = Math.sqrt(e[0] * e[0] + e[1] * e[1]) || 1;
-      return (e[1] / len) * r;
+      const dy = e[1] / len;
+      const r = embNorm < 0.1
+        ? Math.min(Math.tanh(((node as any).depth ?? 0.3) * 4) * 0.95, 0.98)
+        : Math.min(embNorm, 0.99);
+      return dy * r;
     }
     return 0;
   }

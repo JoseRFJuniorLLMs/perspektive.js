@@ -158,35 +158,48 @@ function projectToManifold(
     return { x: Math.cos(angle) * r, y: Math.sin(angle) * r, z: 0.01 };
   }
 
+  // Detect truncated high-dim embeddings (norm < 0.1 = first 3 coords of 3072-dim vector)
+  let embNorm = 0;
+  for (let i = 0; i < n.embedding.length; i++) embNorm += n.embedding[i] * n.embedding[i];
+  embNorm = Math.sqrt(embNorm);
+  const isTruncated = embNorm < 0.1;
+
+  // For truncated embeddings: use depth for radius, embedding direction for angle
+  // This spreads nodes across the Poincaré disk using their actual hyperbolic depth
   if (manifold === 'POINCARE') {
-    let sumSq = 0;
-    for (let i = 0; i < n.embedding.length; i++) sumSq += n.embedding[i] * n.embedding[i];
-    const r = Math.min(Math.sqrt(sumSq), 0.99);
-    const len = Math.sqrt(n.embedding[0] ** 2 + n.embedding[1] ** 2) || 1;
-    return { x: (n.embedding[0] / len) * r, y: (n.embedding[1] / len) * r, z: 0.01 };
+    const dirLen = Math.sqrt(n.embedding[0] ** 2 + n.embedding[1] ** 2) || 1;
+    const dx = n.embedding[0] / dirLen;
+    const dy = n.embedding[1] / dirLen;
+    const r = isTruncated
+      ? Math.min(Math.tanh((n.depth ?? 0.3) * 4) * 0.95, 0.98)  // tanh stretches depth to fill disk
+      : Math.min(embNorm, 0.99);
+    return { x: dx * r, y: dy * r, z: 0.01 };
   }
   if (manifold === 'POINCARE_BALL') {
-    let sumSq = 0;
-    for (let i = 0; i < Math.min(n.embedding.length, 3); i++) sumSq += n.embedding[i] * n.embedding[i];
-    const r = Math.min(Math.sqrt(sumSq), 0.99);
-    const len = Math.sqrt(n.embedding[0]**2 + n.embedding[1]**2 + (n.embedding[2]||0)**2) || 1;
-    return { 
-      x: (n.embedding[0] / len) * r, 
-      y: (n.embedding[1] / len) * r, 
-      z: ((n.embedding[2] || 0) / len) * r 
+    const e = n.embedding;
+    const dirLen = Math.sqrt(e[0]**2 + e[1]**2 + (e[2]||0)**2) || 1;
+    const r = isTruncated
+      ? Math.min(Math.tanh((n.depth ?? 0.3) * 4) * 0.95, 0.98)
+      : Math.min(embNorm, 0.99);
+    return {
+      x: (e[0] / dirLen) * r,
+      y: (e[1] / dirLen) * r,
+      z: ((e[2] || 0) / dirLen) * r
     };
   }
   if (manifold === 'EMOTION') {
     return { x: n.valence || 0, y: (n.arousal || 0) * 2 - 1, z: 0.01 };
   }
   if (manifold === 'RIEMANN') {
-    const px = n.embedding[0] * 3;
-    const py = n.embedding[1] * 3;
+    const scale = isTruncated ? 300 : 3;  // amplify tiny coords for Riemann sphere
+    const px = n.embedding[0] * scale;
+    const py = n.embedding[1] * scale;
     const denom = 1 + px * px + py * py;
     return { x: (2 * px) / denom, y: (2 * py) / denom, z: (px * px + py * py - 1) / denom };
   }
   if (manifold === 'MINKOWSKI') {
-    return { x: n.embedding[0] * 2, y: (n.energy * 5) - 2.5, z: n.embedding[1] * 2 };
+    const scale = isTruncated ? 200 : 2;
+    return { x: n.embedding[0] * scale, y: (n.energy * 5) - 2.5, z: n.embedding[1] * scale };
   }
   return { x: 0, y: 0, z: 0.01 };
 }
