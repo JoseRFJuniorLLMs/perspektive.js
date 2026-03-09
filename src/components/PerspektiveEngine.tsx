@@ -138,10 +138,25 @@ export interface PerspektiveEngineProps {
 // ==========================================
 
 function projectToManifold(
-  n: { embedding: number[]; valence?: number; arousal?: number; energy: number },
+  n: { id?: string; embedding: number[]; valence?: number; arousal?: number; energy: number; depth?: number },
   manifold: ManifoldType
 ): Point3D {
-  if (!n.embedding || n.embedding.length < 2) return { x: 0, y: 0, z: 0.01 };
+  if (!n.embedding || n.embedding.length < 2) {
+    // Fallback: derive position from depth + hash(id) when no embedding available
+    const depth = n.depth ?? 0.5;
+    const energy = n.energy ?? 0.5;
+    const id = (n as any).id || '';
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0;
+    const angle = ((hash & 0xffff) / 0xffff) * Math.PI * 2;
+    const r = Math.min(depth * 0.92 + 0.02, 0.98); // depth → radial position in Poincaré
+    if (manifold === 'POINCARE') return { x: Math.cos(angle) * r, y: Math.sin(angle) * r, z: 0.01 };
+    if (manifold === 'POINCARE_BALL') return { x: Math.cos(angle) * r * 0.7, y: Math.sin(angle) * r * 0.7, z: (energy - 0.5) * r };
+    if (manifold === 'EMOTION') return { x: (energy - 0.5) * 2, y: (depth - 0.5) * 2, z: 0.01 };
+    if (manifold === 'RIEMANN') { const s = r * 3; return { x: Math.cos(angle) * s, y: Math.sin(angle) * s, z: energy }; }
+    if (manifold === 'MINKOWSKI') return { x: Math.cos(angle) * r * 2, y: energy * 5 - 2.5, z: Math.sin(angle) * r * 2 };
+    return { x: Math.cos(angle) * r, y: Math.sin(angle) * r, z: 0.01 };
+  }
 
   if (manifold === 'POINCARE') {
     let sumSq = 0;
