@@ -18,7 +18,7 @@ import type { BoxSelectRect } from './types';
 // STORE INTERFACE
 // ==========================================
 
-interface SelectionStore {
+export interface SelectionStore {
   // --- State ---
   selectedIds: Set<string>;
   primaryId: string | null;

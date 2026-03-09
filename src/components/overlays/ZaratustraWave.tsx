@@ -9,7 +9,6 @@
 
 import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Line } from '@react-three/drei';
 import * as THREE from 'three';
 
 export interface ZaratustraResult {
@@ -37,7 +36,7 @@ export interface ZaratustraWaveProps {
 const WillToPowerWave = ({ active, invokedAt }: { active: boolean; invokedAt: number }) => {
   const ringRef = useRef<THREE.Mesh>(null);
 
-  useFrame(({ clock }) => {
+  useFrame(() => {
     if (!ringRef.current || !active) return;
     const elapsed = (Date.now() - invokedAt) / 1000;
     if (elapsed > 5) {

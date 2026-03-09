@@ -71,7 +71,7 @@ const CircumplexRing = () => {
 // MAIN COMPONENT
 // ==========================================
 
-export function EmotionView({ nodes, edges = [] }: EmotionViewProps) {
+export function EmotionView({ nodes, edges: _edges = [] }: EmotionViewProps) {
   const { selectNode, selectedIds } = useSelection();
 
   // Quadrant density: count nodes per quadrant

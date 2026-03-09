@@ -10,9 +10,13 @@ export interface DaemonData {
 
 export class DaemonRenderer {
   private daemonMeshes: Map<string, THREE.Group> = new Map();
-  private dummy = new THREE.Object3D();
+  // @ts-ignore used for instanced rendering setup
+  private _dummy = new THREE.Object3D();
+  private scene: THREE.Scene;
 
-  constructor(private scene: THREE.Scene) {}
+  constructor(scene: THREE.Scene) {
+    this.scene = scene;
+  }
 
   syncDaemons(daemonsFromBackend: DaemonData[]) {
     const activeIds = new Set(daemonsFromBackend.map(d => d.id));

@@ -7,7 +7,7 @@
  * @module algorithms/pathfinding
  */
 
-import { Graph, NodeData } from './types';
+import { Graph, type NodeData } from './types';
 
 // ===========================================================================
 // MinHeap (Binary Heap Priority Queue)

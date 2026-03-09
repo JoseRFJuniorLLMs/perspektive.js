@@ -262,16 +262,17 @@ export interface StreamStats {
  * Level-of-detail rendering tiers based on camera zoom.
  * Lower tiers render less geometry for better performance at overview zooms.
  */
-export enum LODLevel {
+export const LODLevel = {
   /** Zoom < 0.3x: merge nearby nodes into cluster circles, only major edges. */
-  CLUSTER = 0,
+  CLUSTER: 0,
   /** Zoom < 1x: only high-energy nodes (top 20%), simplified 4-segment edges. */
-  LOW = 1,
+  LOW: 1,
   /** Zoom 1x-2x: all nodes, 16-segment edges, no labels. */
-  MEDIUM = 2,
+  MEDIUM: 2,
   /** Zoom > 2x: all nodes with labels, full 64-segment geodesic edges. */
-  HIGH = 3,
-}
+  HIGH: 3,
+} as const;
+export type LODLevel = (typeof LODLevel)[keyof typeof LODLevel];
 
 /**
  * A cluster of merged nodes for the CLUSTER LOD level.

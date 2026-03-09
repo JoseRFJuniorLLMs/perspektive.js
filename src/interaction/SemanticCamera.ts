@@ -6,7 +6,7 @@
  */
 
 import * as THREE from 'three';
-import { NodePayload } from '../streaming/types';
+import type { NodePayload } from '../streaming/types';
 
 export interface CameraState {
   position: THREE.Vector3;

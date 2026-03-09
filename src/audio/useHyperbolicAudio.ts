@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 export function useHyperbolicAudio(audioElement: HTMLAudioElement | null) {
     const [amplitude, setAmplitude] = useState<number>(0);
     const analyzerRef = useRef<AnalyserNode | null>(null);
-    const dataArrayRef = useRef<Uint8Array | null>(null);
+    const dataArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
     const audioCtxRef = useRef<AudioContext | null>(null);
 
     useEffect(() => {

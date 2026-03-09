@@ -10,7 +10,7 @@
  * @module algorithms/community
  */
 
-import { Graph, NodeData, EdgeData } from './types';
+import { Graph } from './types';
 
 // ===========================================================================
 // Louvain method

@@ -32,7 +32,7 @@ export async function extractPeaks(audioUrl: string, samples = 100): Promise<num
 export class AudioPulse {
   private audio: HTMLAudioElement | null = null;
   private analyzer: AnalyserNode | null = null;
-  private dataArray: Uint8Array | null = null;
+  private dataArray: Uint8Array<ArrayBuffer> | null = null;
   private audioCtx: AudioContext | null = null;
 
   constructor() {}

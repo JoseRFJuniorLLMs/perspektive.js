@@ -18,7 +18,7 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react';
 import type { ContextMenuItem, InteractionCallbacks } from './types';
 import type { NodeData } from '../components/PerspektiveEngine';
-import { useSelection } from './useSelection';
+import { useSelection, type SelectionStore } from './useSelection';
 
 // ==========================================
 // TYPES
@@ -145,7 +145,7 @@ function buildDefaultItems(
   targetIds: string[],
   nodes: NodeData[],
   callbacks: InteractionCallbacks | undefined,
-  selection: ReturnType<typeof useSelection>,
+  selection: SelectionStore,
 ): ContextMenuItem[] {
   const targetNodes = nodes.filter(n => targetIds.includes(n.id));
   const primaryType = targetNodes.length > 0 ? targetNodes[0].node_type : null;
@@ -260,7 +260,7 @@ export const ContextMenu = ({
   onClose,
 }: ContextMenuProps) => {
   const menuRef = useRef<HTMLDivElement>(null);
-  const selection = useSelection();
+  const selection: SelectionStore = useSelection();
 
   // Inject keyframe animation styles once
   useEffect(() => {

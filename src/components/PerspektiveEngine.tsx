@@ -12,13 +12,13 @@ import {
   useState, useMemo, useRef, useEffect, useCallback,
   useSyncExternalStore, type RefObject,
 } from 'react';
-import { Canvas, useFrame, useThree, ThreeEvent, extend } from '@react-three/fiber';
+import { Canvas, useFrame, useThree, type ThreeEvent, extend } from '@react-three/fiber';
 import { OrthographicCamera, OrbitControls, Line, Html } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { calculateGeodesic, getVisualRadius, type Point2D } from '../math/poincare';
 import { ErrorBoundary } from './ErrorBoundary';
-import { NodePayload, EdgePayload } from '../streaming/types';
+import type { NodePayload, EdgePayload } from '../streaming/types';
 import { SearchBar } from '../search/SearchBar';
 import { FilterPanel } from '../search/FilterPanel';
 import { useFilter } from '../search/useFilter';
@@ -27,13 +27,12 @@ import { WebGPULayoutRunner } from '../layouts/webgpu/compute-runner';
 import { GraphStore } from '../streaming/GraphStore';
 import { WebSocketClient } from '../streaming/WebSocketClient';
 import { computeBetti0, computeBetti1 } from '../analysis/tda';
-import { SemanticCameraAPI } from '../interaction/SemanticCamera';
+import type { SemanticCameraAPI } from '../interaction/SemanticCamera';
 import { SelectionHighlight, HoverHighlight } from '../interaction/SelectionHighlight';
 import { BoxSelectOverlay } from '../interaction/BoxSelectOverlay';
 import { useSelection } from '../interaction/useSelection';
 import { ContextMenu } from '../interaction/ContextMenu';
 import { useDrag } from '../interaction/useDrag';
-import { useBoxSelect } from '../interaction/useBoxSelect';
 import { MobiusZoom } from '../interaction/MobiusZoom';
 import { PerspektiveThemeProvider, useTheme } from '../theme/ThemeContext';
 import { presets as ThemePresets } from '../theme/presets';
@@ -42,7 +41,7 @@ import { DiffusionHeatmap } from './overlays/DiffusionHeatmap';
 import { EnergyPulse } from './overlays/EnergyPulse';
 import { SchrodingerEdgeMaterial } from '../materials/SchrodingerEdgeMaterial';
 import { KineticFlowEngine } from '../engine/KineticFlow';
-import { DaemonRenderer, DaemonData } from '../agents/DaemonRenderer';
+import { DaemonRenderer, type DaemonData } from '../agents/DaemonRenderer';
 import { AudioPulse } from '../audio/AudioDecoder';
 import { PoincareNodeMaterial } from '../materials/PoincareNodeMaterial';
 import { PoincareBackgroundMaterial } from '../materials/PoincareBackgroundMaterial';
@@ -345,7 +344,7 @@ const GraphNodes = ({
   const [hoveredNode, setHoveredNode] = useState<NodeData | null>(null);
 
   const { matchedIds, isActive: filterActive } = useFilter();
-  const { selectedIds } = useSelection();
+  const { selectedIds: _selectedIds } = useSelection();
 
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const color = useMemo(() => new THREE.Color(), []);
@@ -536,7 +535,7 @@ const RiemannWireframe = ({ manifold }: { manifold: ManifoldType }) => {
   );
 };
 
-const ReasoningTrace = ({ nodes, traceIds, manifold }: { nodes: NodeData[], traceIds: string[], manifold: ManifoldType }) => {
+const ReasoningTrace = ({ nodes, traceIds, manifold: _manifold }: { nodes: NodeData[], traceIds: string[], manifold: ManifoldType }) => {
   if (traceIds.length < 2) return null;
   const points = useMemo(() => {
     const nodeMap = new Map(nodes.map(n => [n.id, n]));
@@ -629,7 +628,7 @@ const PerspektiveEngineInner = ({
   const [streaming, setStreaming] = useState(false);
   const [wsStatus, setWsStatus] = useState<string>('');
   const [gpuActive, setGpuActive] = useState(false);
-  const [activeTrace, setActiveTrace] = useState<string[]>([]);
+  const [activeTrace, _setActiveTrace] = useState<string[]>([]);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showPulse, setShowPulse] = useState(true);
   const [showFlow, setShowFlow] = useState(true);
@@ -643,6 +642,7 @@ const PerspektiveEngineInner = ({
   // Graph store
   const storeRef = useRef(new GraphStore());
   const gpuRunnerRef = useRef<WebGPULayoutRunner | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const semanticCameraRef = useRef<SemanticCameraAPI | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
@@ -678,6 +678,7 @@ const PerspektiveEngineInner = ({
   const { deselectAll } = useSelection();
 
   const is2D = manifold === 'POINCARE' || manifold === 'EMOTION';
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const is3D = manifold === 'POINCARE_BALL' || manifold === 'RIEMANN' || manifold === 'MINKOWSKI';
 
   // Betti numbers: offload to server for large graphs (>5k nodes)
@@ -963,20 +964,25 @@ const PerspektiveEngineInner = ({
           {dreamSession && (
             <DreamOverlay
               session={dreamSession}
-              onApply={() => onDreamAction?.('apply', dreamSession.dreamId)}
-              onReject={() => onDreamAction?.('reject', dreamSession.dreamId)}
+              visible={true}
+              onApply={() => onDreamAction?.('apply', dreamSession.id)}
+              onReject={() => onDreamAction?.('reject', dreamSession.id)}
             />
           )}
           {causalEdges && causalEdges.length > 0 && (
             <CausalOverlay
-              edges={causalEdges}
-              chain={causalChain ?? undefined}
+              nodePositions={new Map(graphData.nodes.map(n => [n.id, { x: n.x, y: n.y, z: n.z }]))}
+              causalEdges={causalEdges}
+              causalChain={causalChain ?? null}
+              visible={true}
             />
           )}
           {zaratustraResult && (
             <ZaratustraWave
               result={zaratustraResult}
-              nodes={graphData.nodes}
+              active={true}
+              nodePositions={new Map(graphData.nodes.map(n => [n.id, { x: n.x, y: n.y, z: n.z }]))}
+              invokedAt={Date.now()}
             />
           )}
 
@@ -1007,7 +1013,7 @@ const PerspektiveEngineInner = ({
       {/* Narrative Timeline */}
       {narrativeArcs && narrativeArcs.length > 0 && (
         <div style={{ position: 'absolute', bottom: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 10 }}>
-          <NarrativeTimeline arcs={narrativeArcs} />
+          <NarrativeTimeline arcs={narrativeArcs} visible={true} windowHours={24} />
         </div>
       )}
 

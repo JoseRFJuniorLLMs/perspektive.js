@@ -5,7 +5,7 @@
  * and the existence of "knowledge holes" or latent cycles.
  */
 
-import { NodePayload, EdgePayload } from '../streaming/types';
+import type { NodePayload, EdgePayload } from '../streaming/types';
 
 /**
  * Computes β0 (Betti number 0): The number of connected components.

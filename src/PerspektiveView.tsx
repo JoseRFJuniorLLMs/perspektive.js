@@ -65,11 +65,12 @@ export const PerspektiveView: React.FC<PerspektiveProps> = ({
   width = "100%",
   height = "600px",
   onNodeClick,
-  onNodeHover,
-  enableHeatDiffusion = false
+  onNodeHover: _onNodeHover,
+  enableHeatDiffusion: _enableHeatDiffusion = false
 }) => {
   // Map friendly manifold names to engine types
-  const engineManifold: EngineManifold = 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const engineManifold: EngineManifold =
     manifold === "poincare" ? "POINCARE" :
     manifold === "riemann" ? "RIEMANN" :
     manifold === "minkowski" ? "MINKOWSKI" :

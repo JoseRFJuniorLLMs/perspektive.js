@@ -10,7 +10,7 @@
  * @module algorithms/traversal
  */
 
-import { Graph, TraversalVisitor } from './types';
+import { Graph, type TraversalVisitor } from './types';
 
 // ---------------------------------------------------------------------------
 // BFS result

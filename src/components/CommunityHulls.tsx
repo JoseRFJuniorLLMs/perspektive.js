@@ -140,7 +140,7 @@ export const CommunityHulls: React.FC<CommunityHullsProps> = ({
   nodes,
   communityMap,
   fillOpacity = 0.08,
-  showLabels = true,
+  showLabels: _showLabels = true,
 }) => {
   // Group nodes by community
   const communities = useMemo(() => {
@@ -191,7 +191,7 @@ export const CommunityHulls: React.FC<CommunityHullsProps> = ({
 
   return (
     <group name="community-hulls">
-      {hulls.map(({ cid, hull, color, centroid }) => (
+      {hulls.map(({ cid, hull, color, centroid: _centroid }) => (
         <group key={String(cid)}>
           <HullMesh hull={hull} color={color} opacity={fillOpacity} />
           <HullOutline hull={hull} color={color} />

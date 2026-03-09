@@ -48,7 +48,9 @@ export interface SelectionHighlightProps {
 // CONSTANTS
 // ==========================================
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const CYAN = new THREE.Color('#00f0ff');
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const MAGENTA = new THREE.Color('#ff00ff');
 const HDR_MULTIPLIER = 3.0; // Push colors into HDR range for Bloom to pick up
 

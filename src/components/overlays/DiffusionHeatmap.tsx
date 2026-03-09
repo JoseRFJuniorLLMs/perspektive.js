@@ -9,7 +9,7 @@
  */
 
 import { useMemo, useRef, useEffect } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { NodeData } from '../PerspektiveEngine';
 
@@ -37,7 +37,7 @@ export const DiffusionHeatmap = ({
   range = 1.1,
   opacity = 0.35,
 }: DiffusionHeatmapProps) => {
-  const { size } = useThree();
+  const { size: _size } = useThree();
   const meshRef = useRef<THREE.Mesh>(null);
   const texRef = useRef<THREE.DataTexture | null>(null);
 

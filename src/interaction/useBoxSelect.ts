@@ -110,7 +110,7 @@ export function useBoxSelect({
     updateBoxSelect,
     endBoxSelect,
     selectMany,
-    boxSelect,
+    boxSelect: _boxSelect,
     selectedIds,
   } = useSelection();
 

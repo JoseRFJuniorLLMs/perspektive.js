@@ -12,7 +12,7 @@
  * aqui carregamos "tiles semânticos" do espaço hiperbólico.
  */
 
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { GraphStore } from './GraphStore';

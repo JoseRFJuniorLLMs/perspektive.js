@@ -104,7 +104,7 @@ export const ExportToolbar = ({
       target: e.target,
       weight: e.weight,
     }));
-    exportToJSON(graphNodes as any, graphEdges as any, {
+    exportToJSON({ nodes: graphNodes, edges: graphEdges } as any, {
       filename: `perspektive-${Date.now()}`,
     });
     setBusy(false);
@@ -124,7 +124,7 @@ export const ExportToolbar = ({
       target: e.target,
       weight: e.weight,
     }));
-    exportToGraphML(graphNodes as any, graphEdges as any, {
+    exportToGraphML({ nodes: graphNodes, edges: graphEdges } as any, {
       filename: `perspektive-${Date.now()}`,
     });
     setBusy(false);
