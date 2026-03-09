@@ -309,6 +309,52 @@ const MinkowskiLightCones = ({ nodes, manifold }: { nodes: NodeData[], manifold:
 };
 
 // ==========================================
+// AUDIO UNIFORM UPDATER (inside Canvas)
+// ==========================================
+
+const AudioUniformUpdater = ({
+  audioPulseRef,
+  audioAmplitude,
+  setAudioAmplitude,
+  xrSession,
+  manifold,
+  setManifold,
+}: {
+  audioPulseRef: RefObject<AudioPulse>;
+  audioAmplitude: number;
+  setAudioAmplitude: (v: number) => void;
+  xrSession: XRSession | null;
+  manifold: ManifoldType;
+  setManifold: (fn: (prev: ManifoldType) => ManifoldType) => void;
+}) => {
+  useFrame((state) => {
+    const amp = audioPulseRef.current?.getAmplitude() ?? 0;
+    if (amp !== audioAmplitude) setAudioAmplitude(amp);
+
+    const time = state.clock.getElapsedTime();
+
+    // Auto-switch to Poincaré Ball 3D when entering VR
+    if (xrSession && manifold !== 'POINCARE_BALL') {
+      setManifold(() => 'POINCARE_BALL');
+    }
+
+    // Update uniforms only on materials that have them
+    state.scene.traverse((obj: any) => {
+      const mat = obj.material;
+      if (!mat || !mat.uniforms) return;
+      if (mat.uniforms.uAudioAmplitude) mat.uniforms.uAudioAmplitude.value = amp;
+      if (mat.uniforms.u_audioAmplitude) mat.uniforms.u_audioAmplitude.value = amp;
+      if (mat.uniforms.uTime) mat.uniforms.uTime.value = time;
+      if (mat.uniforms.u_time) mat.uniforms.u_time.value = time;
+      if (mat.uniforms.u_resolution) {
+        mat.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+      }
+    });
+  });
+  return null;
+};
+
+// ==========================================
 // RENDERER REF GRABBER (inside Canvas)
 // ==========================================
 
@@ -793,31 +839,7 @@ const PerspektiveEngineInner = ({
     return () => cancelAnimationFrame(frameId);
   }, [gpuActive, graphNodes.length]);
 
-  // Audio uniform update loop + WebXR Matrix Injection
-  useFrame((state) => {
-    const amp = audioPulseRef.current.getAmplitude();
-    if (amp !== audioAmplitude) setAudioAmplitude(amp);
-
-    const time = state.clock.getElapsedTime();
-
-    // Auto-switch to Poincaré Ball 3D when entering VR
-    if (xrSession && manifold !== 'POINCARE_BALL') {
-       setManifold('POINCARE_BALL');
-    }
-
-    // Update uniforms only on materials that have them (skip non-shader objects)
-    state.scene.traverse((obj: any) => {
-      const mat = obj.material;
-      if (!mat || !mat.uniforms) return;
-      if (mat.uniforms.uAudioAmplitude) mat.uniforms.uAudioAmplitude.value = amp;
-      if (mat.uniforms.u_audioAmplitude) mat.uniforms.u_audioAmplitude.value = amp;
-      if (mat.uniforms.uTime) mat.uniforms.uTime.value = time;
-      if (mat.uniforms.u_time) mat.uniforms.u_time.value = time;
-      if (mat.uniforms.u_resolution) {
-         mat.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
-      }
-    });
-  });
+  // Audio uniform update + WebXR injection moved to <AudioUniformUpdater> inside Canvas
 
   useEffect(() => { setNodes(graphNodes); }, [graphNodes, setNodes]);
 
@@ -892,6 +914,14 @@ const PerspektiveEngineInner = ({
       <ErrorBoundary>
         <Canvas>
           <RendererGrabber rendererRef={rendererRef} />
+          <AudioUniformUpdater
+            audioPulseRef={audioPulseRef}
+            audioAmplitude={audioAmplitude}
+            setAudioAmplitude={setAudioAmplitude}
+            xrSession={xrSession}
+            manifold={manifold}
+            setManifold={setManifold}
+          />
 
           {is2D && <OrthographicCamera ref={cameraRef} makeDefault position={[0, 0, 5]} zoom={zoom} />}
           <OrbitControls
