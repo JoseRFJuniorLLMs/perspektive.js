@@ -809,7 +809,17 @@ const PerspektiveEngineInner = ({
     // Initial REST fetch
     fetch(`${apiBase}/api/graph?collection=${collection}&limit=${limit}`)
       .then(res => res.json())
-      .then(data => { if (data?.nodes) storeRef.current.loadFull(data.nodes, data.edges || []); })
+      .then(data => {
+        if (data?.nodes) {
+          // Normalize edges: server sends {from,to}, store expects {source,target}
+          const edges = (data.edges || []).map((e: any) => ({
+            source: e.source || e.from,
+            target: e.target || e.to,
+            weight: e.weight ?? 0.5,
+          }));
+          storeRef.current.loadFull(data.nodes, edges);
+        }
+      })
       .catch(() => {});
 
     if (streamingMode === 'sse') {
